@@ -221,6 +221,7 @@ def get_requirements(
     tags: Optional[list[str]] = None,
     organization_ids: Optional[list[UUID]] = None,
     project_id: Optional[UUID] = None,
+    include_deployed: bool = False,
 ) -> tuple[list[models.Requirement], int]:
     """
     Get requirements with optional filtering and pagination.
@@ -236,6 +237,7 @@ def get_requirements(
         tags: Filter by tags (AND logic - requirement must have ALL specified tags)
         organization_ids: Filter by organization IDs (for multi-user access control)
         project_id: Filter by project ID
+        include_deployed: Include deployed items (default: False, deployed items excluded)
 
     Returns:
         Tuple of (requirements list, total count)
@@ -272,6 +274,10 @@ def get_requirements(
         # PostgreSQL array contains operator (@>) - requirement must have ALL specified tags
         # Cast the tags list to PostgreSQL text[] array type to match the column type
         query = query.filter(models.Requirement.tags.op('@>')(cast(tags, ARRAY(Text))))
+
+    # Exclude deployed items by default unless explicitly requested
+    if not include_deployed:
+        query = query.filter(models.Requirement.status != models.LifecycleStatus.DEPLOYED)
 
     # Get total count
     total = query.count()
