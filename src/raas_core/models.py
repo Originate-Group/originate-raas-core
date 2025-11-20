@@ -79,6 +79,14 @@ class ProjectRole(str, enum.Enum):
     VIEWER = "viewer"
 
 
+class QualityScore(str, enum.Enum):
+    """Quality score enum for content length validation."""
+
+    OK = "OK"
+    NEEDS_REVIEW = "NEEDS_REVIEW"
+    LOW_QUALITY = "LOW_QUALITY"
+
+
 class Organization(Base):
     """
     Organization model for workspaces/teams.
@@ -298,6 +306,15 @@ class Requirement(Base):
     tags = Column(ARRAY(String), default=[])
     priority = Column(Integer, default=0)
 
+    # Quality tracking
+    content_length = Column(Integer, nullable=False, default=0)
+    quality_score = Column(
+        Enum(QualityScore, values_callable=lambda x: [e.value for e in x]),
+        nullable=False,
+        default=QualityScore.OK,
+        index=True
+    )
+
     # Multi-tenancy
     organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
     project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -324,11 +341,6 @@ class Requirement(Base):
             name="valid_parent_and_project",
         ),
     )
-
-    @property
-    def content_length(self) -> int:
-        """Calculate the length of the content field."""
-        return len(self.content) if self.content else 0
 
     @property
     def child_count(self) -> int:

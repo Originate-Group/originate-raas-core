@@ -10,6 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from . import models, schemas
 from .markdown_utils import render_template, extract_metadata, merge_content, MarkdownParseError
+from .quality import calculate_quality_score, is_content_length_valid_for_approval, get_length_validation_error
 
 logger = logging.getLogger("raas-api.crud")
 
@@ -124,6 +125,17 @@ def create_requirement(
         # Inherit project_id from parent
         resolved_project_id = parent.project_id
 
+    # Calculate content length and quality score
+    content_length = len(requirement.content) if requirement.content else 0
+    quality_score = calculate_quality_score(content_length, requirement.type)
+
+    # Validate content length for status review/approved
+    if status in [models.LifecycleStatus.REVIEW, models.LifecycleStatus.APPROVED]:
+        if not is_content_length_valid_for_approval(content_length, requirement.type):
+            error_msg = get_length_validation_error(content_length, requirement.type)
+            logger.warning(f"Blocked requirement creation due to content length: {error_msg}")
+            raise ValueError(error_msg)
+
     try:
         db_requirement = models.Requirement(
             type=requirement.type,
@@ -134,6 +146,8 @@ def create_requirement(
             status=status,
             tags=tags,
             priority=priority,
+            content_length=content_length,
+            quality_score=quality_score,
             organization_id=organization_id,
             project_id=resolved_project_id,
             created_by_user_id=user_id,
@@ -347,6 +361,12 @@ def update_requirement(
             if old_content != update_data["content"]:
                 changes.append(("content", "markdown updated", "markdown updated"))
                 db_requirement.content = update_data["content"]
+                # Recalculate content length and quality score
+                db_requirement.content_length = len(update_data["content"])
+                db_requirement.quality_score = calculate_quality_score(
+                    db_requirement.content_length,
+                    db_requirement.type
+                )
         except MarkdownParseError as e:
             raise ValueError(f"Invalid markdown content: {e}")
     else:
@@ -378,6 +398,19 @@ def update_requirement(
                     priority=db_requirement.priority,
                     tags=db_requirement.tags,
                 )
+            # Recalculate content length and quality score after content update
+            db_requirement.content_length = len(db_requirement.content) if db_requirement.content else 0
+            db_requirement.quality_score = calculate_quality_score(
+                db_requirement.content_length,
+                db_requirement.type
+            )
+
+    # Validate content length for status transitions to review/approved
+    if db_requirement.status in [models.LifecycleStatus.REVIEW, models.LifecycleStatus.APPROVED]:
+        if not is_content_length_valid_for_approval(db_requirement.content_length, db_requirement.type):
+            error_msg = get_length_validation_error(db_requirement.content_length, db_requirement.type)
+            logger.warning(f"Blocked status transition due to content length: {error_msg}")
+            raise ValueError(error_msg)
 
     if changes:
         db.commit()

@@ -13,6 +13,7 @@ from .models import (
     ProjectStatus,
     ProjectRole,
     MemberRole,
+    QualityScore,
 )
 
 
@@ -84,8 +85,9 @@ class RequirementListItem(BaseModel):
     created_by: Optional[str] = None
     updated_by: Optional[str] = None
 
-    # Computed metadata fields
+    # Quality tracking fields
     content_length: int = Field(description="Length of full markdown content in characters")
+    quality_score: QualityScore = Field(description="Quality score based on content length")
     child_count: int = Field(description="Number of direct children")
 
     model_config = ConfigDict(from_attributes=True)
@@ -103,8 +105,9 @@ class RequirementResponse(RequirementBase):
     created_by: Optional[str] = None
     updated_by: Optional[str] = None
 
-    # Computed metadata fields
+    # Quality tracking fields
     content_length: int = Field(description="Length of full markdown content in characters")
+    quality_score: QualityScore = Field(description="Quality score based on content length")
     child_count: int = Field(description="Number of direct children")
 
     model_config = ConfigDict(from_attributes=True)

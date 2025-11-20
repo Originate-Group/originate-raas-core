@@ -18,6 +18,7 @@ from .models import (
     ProjectVisibility,
     ProjectRole,
     MemberRole,
+    QualityScore,
 )
 from .crud import (
     # Organization CRUD
@@ -97,6 +98,7 @@ __all__ = [
     "ProjectVisibility",
     "ProjectRole",
     "MemberRole",
+    "QualityScore",
     # CRUD functions
     "create_organization",
     "get_organization",
