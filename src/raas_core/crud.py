@@ -231,6 +231,7 @@ def get_requirements(
     limit: int = 100,
     type_filter: Optional[models.RequirementType] = None,
     status_filter: Optional[models.LifecycleStatus] = None,
+    quality_score_filter: Optional[models.QualityScore] = None,
     parent_id: Optional[UUID] = None,
     search: Optional[str] = None,
     tags: Optional[list[str]] = None,
@@ -247,6 +248,7 @@ def get_requirements(
         limit: Maximum number of records to return
         type_filter: Filter by requirement type
         status_filter: Filter by status
+        quality_score_filter: Filter by quality score
         parent_id: Filter by parent ID
         search: Search in title and description
         tags: Filter by tags (AND logic - requirement must have ALL specified tags)
@@ -269,6 +271,9 @@ def get_requirements(
 
     if status_filter:
         query = query.filter(models.Requirement.status == status_filter)
+
+    if quality_score_filter:
+        query = query.filter(models.Requirement.quality_score == quality_score_filter)
 
     if parent_id is not None:
         query = query.filter(models.Requirement.parent_id == parent_id)
