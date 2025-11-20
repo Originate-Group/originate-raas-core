@@ -277,8 +277,9 @@ def get_requirements(
     total = query.count()
 
     # Apply pagination and ordering
+    # Sort by priority ascending (lower number = higher priority), then by created_at
     requirements = (
-        query.order_by(models.Requirement.created_at.desc())
+        query.order_by(models.Requirement.priority.asc(), models.Requirement.created_at)
         .offset(skip)
         .limit(limit)
         .all()
@@ -445,7 +446,7 @@ def get_requirement_children(
     return (
         db.query(models.Requirement)
         .filter(models.Requirement.parent_id == parent_id)
-        .order_by(models.Requirement.priority.desc(), models.Requirement.created_at)
+        .order_by(models.Requirement.priority.asc(), models.Requirement.created_at)
         .all()
     )
 
