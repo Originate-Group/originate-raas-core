@@ -112,7 +112,15 @@ def parse_markdown(content: str) -> Dict[str, Any]:
     try:
         frontmatter = yaml.safe_load(frontmatter_str)
     except yaml.YAMLError as e:
-        raise MarkdownParseError(f"Invalid YAML in frontmatter: {e}")
+        # Try unsafe_load for legacy content with Python object tags
+        try:
+            frontmatter = yaml.unsafe_load(frontmatter_str)
+            # Sanitize: convert any enum objects to their string values
+            for key, value in list(frontmatter.items()):
+                if hasattr(value, 'value'):
+                    frontmatter[key] = value.value
+        except yaml.YAMLError as e2:
+            raise MarkdownParseError(f"Invalid YAML in frontmatter: {e2}")
 
     if not isinstance(frontmatter, dict):
         raise MarkdownParseError("Frontmatter must be a YAML dictionary")
