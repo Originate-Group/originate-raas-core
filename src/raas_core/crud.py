@@ -162,7 +162,7 @@ def create_requirement(
 
 def get_requirement(db: Session, requirement_id: UUID) -> Optional[models.Requirement]:
     """
-    Get a requirement by ID.
+    Get a requirement by UUID.
 
     Args:
         db: Database session
@@ -172,6 +172,42 @@ def get_requirement(db: Session, requirement_id: UUID) -> Optional[models.Requir
         Requirement instance or None if not found
     """
     return db.query(models.Requirement).filter(models.Requirement.id == requirement_id).first()
+
+
+def get_requirement_by_any_id(db: Session, requirement_id: str) -> Optional[models.Requirement]:
+    """
+    Get requirement by UUID or human-readable ID.
+
+    Supports both formats:
+    - UUID: afa92d5c-e008-44d6-b2cf-ccacd81481d6
+    - Readable: RAAS-FEAT-042 (case-insensitive)
+
+    Args:
+        db: Database session
+        requirement_id: Either UUID string or human-readable ID
+
+    Returns:
+        Requirement instance or None if not found
+    """
+    import re
+
+    # Try UUID first (most common case, faster)
+    try:
+        uuid_id = UUID(requirement_id)
+        return db.query(models.Requirement).filter(models.Requirement.id == uuid_id).first()
+    except (ValueError, AttributeError):
+        # Not a valid UUID, try human-readable ID
+        pass
+
+    # Validate human-readable ID format: PROJECT-TYPE-###
+    # Pattern: 2-4 uppercase alphanumeric, dash, TYPE (EPIC|COMP|FEAT|REQ), dash, 3 digits
+    if not re.match(r'^[A-Z0-9]{2,4}-(EPIC|COMP|FEAT|REQ)-[0-9]{3}$', requirement_id.upper()):
+        return None
+
+    # Lookup by human-readable ID (case-insensitive)
+    return db.query(models.Requirement).filter(
+        models.Requirement.human_readable_id == requirement_id.upper()
+    ).first()
 
 
 def get_requirements(
