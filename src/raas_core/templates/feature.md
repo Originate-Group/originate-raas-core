@@ -9,6 +9,19 @@ tags: {tags}
 
 # Feature: {title}
 
+<!--
+A Feature is the ATOMIC UNIT OF WORK handed to a developer (human or AI).
+It must be self-contained and implementable without additional context.
+
+Child Requirements are OPTIONAL decomposition - use them to break down
+complex features, but a well-written Feature can be implemented directly.
+
+READY FOR IMPLEMENTATION when:
+- User Story clearly states WHO, WHAT, WHY
+- Acceptance Criteria are observable and testable
+- Scope Boundaries are explicit
+-->
+
 ## User Story
 
 **As a** [type of user]

@@ -9,6 +9,15 @@ tags: {tags}
 
 # Requirement: {title}
 
+<!--
+Requirements are OPTIONAL decomposition of a parent Feature.
+Use them when a Feature is complex enough to benefit from breakdown.
+
+A Requirement should be completable in a single focused session.
+If you need Requirements, the parent Feature is probably complex.
+If the Feature is simple, implement it directly without Requirements.
+-->
+
 ## Description
 
 {description}
