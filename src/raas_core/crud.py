@@ -1562,7 +1562,10 @@ def create_guardrail(
 
     # Parse and validate markdown content
     try:
-        metadata = extract_metadata(content)
+        from .markdown_utils import parse_markdown
+        parsed = parse_markdown(content)
+        frontmatter = parsed["frontmatter"]
+        body = parsed["body"]
     except MarkdownParseError as e:
         logger.warning(f"Invalid markdown content for guardrail: {e}")
         raise ValueError(
@@ -1571,19 +1574,23 @@ def create_guardrail(
         )
 
     # Validate type is 'guardrail'
-    if metadata.get("type") != "guardrail":
+    if frontmatter.get("type") != "guardrail":
         raise ValueError(
-            f"Invalid type in content frontmatter: expected 'guardrail', got '{metadata.get('type')}'"
+            f"Invalid type in content frontmatter: expected 'guardrail', got '{frontmatter.get('type')}'"
         )
 
-    # Extract all fields from validated markdown
-    title = metadata["title"]
-    description = metadata.get("description", "")
-    status = metadata.get("status", models.GuardrailStatus.DRAFT)
-    tags = metadata.get("tags", [])
-    category = metadata["category"]
-    enforcement_level = metadata["enforcement_level"]
-    applies_to = metadata["applies_to"]
+    # Extract all fields from validated markdown frontmatter
+    try:
+        title = frontmatter["title"]
+        category = frontmatter["category"]
+        enforcement_level = frontmatter["enforcement_level"]
+        applies_to = frontmatter["applies_to"]
+    except KeyError as e:
+        raise ValueError(f"Missing required field in frontmatter: {e}")
+
+    description = frontmatter.get("description", "")
+    status = frontmatter.get("status", "draft")
+    tags = frontmatter.get("tags", [])
 
     # Validate category (must be from enum)
     try:
