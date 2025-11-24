@@ -144,7 +144,9 @@ class Organization(Base):
 
     # Relationships
     members = relationship("OrganizationMember", back_populates="organization", cascade="all, delete-orphan")
+    projects = relationship("Project", back_populates="organization", cascade="all, delete-orphan")
     requirements = relationship("Requirement", back_populates="organization", cascade="all, delete-orphan")
+    guardrails = relationship("Guardrail", back_populates="organization", cascade="all, delete-orphan")
 
     # Constraints
     __table_args__ = (
@@ -266,7 +268,7 @@ class Project(Base):
     updated_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True)
 
     # Relationships
-    organization = relationship("Organization", backref="projects")
+    organization = relationship("Organization", back_populates="projects")
     members = relationship("ProjectMember", back_populates="project", cascade="all, delete-orphan")
     requirements = relationship("Requirement", back_populates="project", cascade="all, delete-orphan")
     created_by_user = relationship("User", foreign_keys=[created_by_user_id])
@@ -563,7 +565,7 @@ class Guardrail(Base):
     updated_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True)
 
     # Relationships
-    organization = relationship("Organization", backref="guardrails")
+    organization = relationship("Organization", back_populates="guardrails")
     created_by_user = relationship("User", foreign_keys=[created_by_user_id])
     updated_by_user = relationship("User", foreign_keys=[updated_by_user_id])
 
