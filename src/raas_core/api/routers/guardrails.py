@@ -72,7 +72,7 @@ async def get_guardrail(
 
     Returns the complete guardrail including full markdown content.
     """
-    guardrail = crud.get_guardrail_by_any_id(db, guardrail_id)
+    guardrail = crud.get_guardrail(db, guardrail_id)
     if not guardrail:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -95,7 +95,7 @@ async def update_guardrail(
     YAML frontmatter. All fields in the frontmatter can be updated.
     """
     # Verify guardrail exists
-    existing = crud.get_guardrail_by_any_id(db, guardrail_id)
+    existing = crud.get_guardrail(db, guardrail_id)
     if not existing:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
