@@ -101,6 +101,29 @@ class QualityScore(str, enum.Enum):
     LOW_QUALITY = "LOW_QUALITY"
 
 
+class GuardrailCategory(str, enum.Enum):
+    """Guardrail category enum - MVP scope."""
+
+    SECURITY = "security"
+    ARCHITECTURE = "architecture"
+
+
+class GuardrailStatus(str, enum.Enum):
+    """Guardrail lifecycle status enum."""
+
+    DRAFT = "draft"
+    ACTIVE = "active"
+    DEPRECATED = "deprecated"
+
+
+class EnforcementLevel(str, enum.Enum):
+    """Guardrail enforcement level enum."""
+
+    ADVISORY = "advisory"
+    RECOMMENDED = "recommended"
+    MANDATORY = "mandatory"
+
+
 class Organization(Base):
     """
     Organization model for workspaces/teams.
@@ -493,3 +516,55 @@ class IDSequence(Base):
 
     def __repr__(self) -> str:
         return f"<IDSequence {self.project_id}:{self.requirement_type} next={self.next_number}>"
+
+
+class Guardrail(Base):
+    """
+    Guardrail model for organizational governance standards.
+
+    Guardrails are organization-scoped (not project-scoped) and codify
+    patterns, principles, and standards that guide requirement authoring.
+    """
+
+    __tablename__ = "guardrails"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    human_readable_id = Column(String(20), unique=True, nullable=True, index=True)  # e.g., GUARD-SEC-001
+
+    # Core fields
+    title = Column(String(255), nullable=False)
+    category = Column(
+        Enum(GuardrailCategory, values_callable=lambda x: [e.value for e in x]),
+        nullable=False,
+        index=True
+    )
+    enforcement_level = Column(
+        Enum(EnforcementLevel, values_callable=lambda x: [e.value for e in x]),
+        nullable=False
+    )
+    applies_to = Column(ARRAY(String), nullable=False)  # Which requirement types this applies to
+    status = Column(
+        Enum(GuardrailStatus, values_callable=lambda x: [e.value for e in x]),
+        nullable=False,
+        default=GuardrailStatus.DRAFT,
+        index=True
+    )
+
+    # Content
+    content = Column(Text, nullable=False)  # Full markdown content with frontmatter
+    description = Column(String(500))  # Auto-extracted from content
+
+    # Audit fields
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    updated_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True)
+
+    # Relationships
+    organization = relationship("Organization", backref="guardrails")
+    created_by_user = relationship("User", foreign_keys=[created_by_user_id])
+    updated_by_user = relationship("User", foreign_keys=[updated_by_user_id])
+
+    def __repr__(self) -> str:
+        return f"<Guardrail {self.category.value}: {self.title}>"

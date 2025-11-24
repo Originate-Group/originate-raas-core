@@ -1525,3 +1525,217 @@ def list_users(
     users = query.order_by(models.User.email).offset(skip).limit(limit).all()
 
     return users, total
+
+
+# ============================================================================
+# Guardrail CRUD Operations
+# ============================================================================
+
+def create_guardrail(
+    db: Session,
+    organization_id: UUID,
+    content: str,
+    user_id: UUID,
+) -> models.Guardrail:
+    """
+    Create a new guardrail.
+
+    Args:
+        db: Database session
+        organization_id: Organization UUID
+        content: Full markdown content with YAML frontmatter
+        user_id: User UUID (creator)
+
+    Returns:
+        Created guardrail instance
+
+    Raises:
+        ValueError: If content is missing or invalid
+    """
+    if not content:
+        logger.warning("Attempted to create guardrail without content field")
+        raise ValueError(
+            "Content field is required. Use get_guardrail_template to "
+            "obtain the proper template format, then fill it in and provide the "
+            "complete markdown content."
+        )
+
+    # Parse and validate markdown content
+    try:
+        metadata = extract_metadata(content)
+    except MarkdownParseError as e:
+        logger.warning(f"Invalid markdown content for guardrail: {e}")
+        raise ValueError(
+            f"Invalid markdown content: {e}\n\n"
+            f"Use get_guardrail_template to obtain the proper template format."
+        )
+
+    # Validate type is 'guardrail'
+    if metadata.get("type") != "guardrail":
+        raise ValueError(
+            f"Invalid type in content frontmatter: expected 'guardrail', got '{metadata.get('type')}'"
+        )
+
+    # Extract all fields from validated markdown
+    title = metadata["title"]
+    description = metadata.get("description", "")
+    status = metadata.get("status", models.GuardrailStatus.DRAFT)
+    tags = metadata.get("tags", [])
+    category = metadata["category"]
+    enforcement_level = metadata["enforcement_level"]
+    applies_to = metadata["applies_to"]
+
+    # Validate category (must be from enum)
+    try:
+        category_enum = models.GuardrailCategory(category)
+    except ValueError:
+        valid_categories = [c.value for c in models.GuardrailCategory]
+        raise ValueError(
+            f"Invalid category '{category}'. Must be one of: {', '.join(valid_categories)}"
+        )
+
+    # Validate enforcement_level
+    try:
+        enforcement_enum = models.EnforcementLevel(enforcement_level)
+    except ValueError:
+        valid_levels = [l.value for l in models.EnforcementLevel]
+        raise ValueError(
+            f"Invalid enforcement_level '{enforcement_level}'. Must be one of: {', '.join(valid_levels)}"
+        )
+
+    # Validate status
+    try:
+        status_enum = models.GuardrailStatus(status)
+    except ValueError:
+        valid_statuses = [s.value for s in models.GuardrailStatus]
+        raise ValueError(
+            f"Invalid status '{status}'. Must be one of: {', '.join(valid_statuses)}"
+        )
+
+    # Validate applies_to (must be valid requirement types)
+    if not applies_to or not isinstance(applies_to, list):
+        raise ValueError("applies_to must be a non-empty list of requirement types")
+
+    valid_requirement_types = {rt.value for rt in models.RequirementType}
+    invalid_types = set(applies_to) - valid_requirement_types
+    if invalid_types:
+        raise ValueError(
+            f"Invalid requirement types in applies_to: {', '.join(invalid_types)}. "
+            f"Must be one of: {', '.join(valid_requirement_types)}"
+        )
+
+    # Auto-extract description from content if not provided
+    if not description:
+        # Extract first paragraph after frontmatter
+        content_body = content.split("---", 2)[2] if content.count("---") >= 2 else ""
+        lines = [line.strip() for line in content_body.strip().split("\n") if line.strip() and not line.startswith("#")]
+        description = lines[0][:500] if lines else ""
+
+    # Create guardrail instance
+    db_guardrail = models.Guardrail(
+        organization_id=organization_id,
+        title=title,
+        category=category_enum,
+        enforcement_level=enforcement_enum,
+        applies_to=applies_to,
+        status=status_enum,
+        content=content,
+        description=description,
+        created_by_user_id=user_id,
+        updated_by_user_id=user_id,
+    )
+
+    db.add(db_guardrail)
+    db.commit()
+    db.refresh(db_guardrail)
+
+    logger.info(f"Created guardrail {db_guardrail.human_readable_id} in org {organization_id}")
+    return db_guardrail
+
+
+def get_guardrail(
+    db: Session,
+    guardrail_id: str,
+    organization_id: Optional[UUID] = None,
+) -> Optional[models.Guardrail]:
+    """
+    Get a guardrail by UUID or human-readable ID.
+
+    Args:
+        db: Database session
+        guardrail_id: UUID or human-readable ID (e.g., 'GUARD-SEC-001')
+        organization_id: Optional organization UUID to scope the query
+
+    Returns:
+        Guardrail instance or None if not found
+    """
+    query = db.query(models.Guardrail)
+
+    # Try UUID first, then human-readable ID
+    try:
+        uuid_id = UUID(guardrail_id)
+        query = query.filter(models.Guardrail.id == uuid_id)
+    except ValueError:
+        # Not a UUID, treat as human-readable ID
+        query = query.filter(models.Guardrail.human_readable_id == guardrail_id.upper())
+
+    # Optionally scope to organization
+    if organization_id:
+        query = query.filter(models.Guardrail.organization_id == organization_id)
+
+    return query.first()
+
+
+def get_guardrail_template() -> str:
+    """
+    Get the markdown template for creating a new guardrail.
+
+    Returns:
+        Complete markdown template with YAML frontmatter and guidance
+    """
+    template = """---
+type: guardrail
+title: "[Descriptive Guardrail Title]"
+category: security  # security, architecture
+enforcement_level: recommended  # advisory, recommended, mandatory
+applies_to: [epic, component, feature, requirement]  # Which requirement types this applies to
+status: draft  # draft, active, deprecated
+---
+
+# Guardrail: [Title]
+
+## Principle
+
+[One-sentence statement of the standard or pattern being codified]
+
+## Rationale
+
+[Why does this guardrail exist? What problems does it prevent? What value does it provide?]
+
+## Compliance Criteria
+
+[How do reviewers know if a requirement adheres to this guardrail?]
+
+- [ ] Criterion 1
+- [ ] Criterion 2
+- [ ] Criterion 3
+
+## Examples
+
+### Good Example ✅
+
+[Example of a requirement that follows this guardrail]
+
+### Bad Example ❌
+
+[Example of a requirement that violates this guardrail]
+
+## Related Guardrails
+
+- [Optional: Links to related guardrails]
+
+## References
+
+- [Optional: External documentation, standards, or policies]
+"""
+    return template

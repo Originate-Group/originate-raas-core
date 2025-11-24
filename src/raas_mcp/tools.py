@@ -1055,4 +1055,82 @@ def get_tools() -> list[Tool]:
                 "required": ["requirement_id", "new_status"]
             }
         ),
+        # ============================================================================
+        # Guardrail Tools
+        # ============================================================================
+        Tool(
+            name="get_guardrail_template",
+            description="Get the markdown template for creating a new guardrail. "
+                       "\n\nWHEN TO USE:"
+                       "\n• ALWAYS call this FIRST before create_guardrail() to get proper format"
+                       "\n• Template includes YAML frontmatter structure + markdown body guidance"
+                       "\n\nRETURNS: Complete markdown template with:"
+                       "\n• YAML frontmatter with required/optional fields"
+                       "\n• Placeholder values to replace"
+                       "\n• Detailed writing guidelines"
+                       "\n• Examples of compliance criteria and reference patterns"
+                       "\n\nRELATED TOOLS:"
+                       "\n• Use this template with create_guardrail() to create new guardrails",
+            inputSchema={
+                "type": "object",
+                "properties": {}
+            }
+        ),
+        Tool(
+            name="create_guardrail",
+            description="Create a new organizational guardrail with structured markdown content (with YAML frontmatter). "
+                       "\n\nREQUIRED WORKFLOW:"
+                       "\n1. Call get_guardrail_template() to get the template"
+                       "\n2. Fill in template with actual values (maintain markdown structure)"
+                       "\n3. Pass complete markdown in create_guardrail(content=...)"
+                       "\n\nGUARDRAILS ARE:"
+                       "\n• Organization-scoped (not project-scoped)"
+                       "\n• Standards that guide requirement authoring across all projects"
+                       "\n• Categorized (MVP: security, architecture)"
+                       "\n• Have enforcement levels (advisory, recommended, mandatory)"
+                       "\n• Specify which requirement types they apply to"
+                       "\n\nRETURNS: Created guardrail object with generated UUID and human-readable ID (e.g., GUARD-SEC-001)"
+                       "\n\nRELATED TOOLS:"
+                       "\n• MUST call get_guardrail_template() first to get proper format"
+                       "\n\nERRORS:"
+                       "\n• 400: Invalid markdown format (missing required frontmatter)"
+                       "\n• 400: Invalid category (must be 'security' or 'architecture' for MVP)"
+                       "\n• 403: Forbidden (user must be org admin or owner to create guardrails)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "organization_id": {
+                        "type": "string",
+                        "description": "Organization UUID (guardrails are organization-scoped)"
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "REQUIRED: The complete markdown content with YAML frontmatter. "
+                                     "Must be obtained by calling get_guardrail_template() first and filling in the template."
+                    }
+                },
+                "required": ["organization_id", "content"]
+            }
+        ),
+        Tool(
+            name="get_guardrail",
+            description="Get complete guardrail details including full markdown content. "
+                       "Accepts both UUID and human-readable ID (e.g., 'GUARD-SEC-001', case-insensitive). "
+                       "\n\nRETURNS:"
+                       "\n• All fields: id, human_readable_id, title, category, enforcement_level, applies_to, status, content, etc."
+                       "\n• Full markdown content with frontmatter"
+                       "\n\nERRORS:"
+                       "\n• 404: Guardrail not found (invalid UUID or human-readable ID)"
+                       "\n• 403: Forbidden (no access to this guardrail's organization)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "guardrail_id": {
+                        "type": "string",
+                        "description": "UUID or human-readable ID (e.g., 'GUARD-SEC-001') of the guardrail"
+                    }
+                },
+                "required": ["guardrail_id"]
+            }
+        ),
     ]

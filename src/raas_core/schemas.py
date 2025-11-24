@@ -14,6 +14,9 @@ from .models import (
     ProjectRole,
     MemberRole,
     QualityScore,
+    GuardrailCategory,
+    GuardrailStatus,
+    EnforcementLevel,
 )
 
 
@@ -357,3 +360,46 @@ class UserListResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
+
+
+# ============================================================================
+# Guardrail Schemas
+# ============================================================================
+
+class GuardrailCreate(BaseModel):
+    """Schema for creating a new guardrail.
+
+    IMPORTANT: The 'content' field is REQUIRED and must contain properly formatted
+    markdown with YAML frontmatter. Use the get_guardrail_template endpoint to
+    obtain the correct template format.
+    """
+
+    organization_id: UUID = Field(..., description="Organization UUID")
+    content: str = Field(..., min_length=1, description="Required markdown content with YAML frontmatter")
+
+
+class GuardrailResponse(BaseModel):
+    """Schema for guardrail responses."""
+
+    id: UUID
+    human_readable_id: Optional[str] = None  # e.g., GUARD-SEC-001
+    organization_id: UUID
+    title: str
+    category: GuardrailCategory
+    enforcement_level: EnforcementLevel
+    applies_to: list[str] = Field(description="Requirement types this guardrail applies to")
+    status: GuardrailStatus
+    content: str = Field(description="Full markdown content with frontmatter")
+    description: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    created_by: Optional[str] = None
+    updated_by: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class GuardrailTemplateResponse(BaseModel):
+    """Schema for guardrail template response."""
+
+    template: str = Field(description="Complete markdown template with YAML frontmatter and guidance")

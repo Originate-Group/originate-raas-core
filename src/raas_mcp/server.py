@@ -449,6 +449,55 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent | ImageConten
                     text=f"Transitioned '{result['title']}' to status: {new_status}"
                 )]
 
+            # ============================================================================
+            # Guardrail Handlers
+            # ============================================================================
+            elif name == "get_guardrail_template":
+                response = await client.get("/guardrails/template")
+                response.raise_for_status()
+                result = response.json()
+                logger.info("Successfully retrieved guardrail template")
+                return [TextContent(type="text", text=result["template"])]
+
+            elif name == "create_guardrail":
+                org_id = arguments["organization_id"]
+                content = arguments["content"]
+                response = await client.post("/guardrails/", json={
+                    "organization_id": org_id,
+                    "content": content
+                })
+                response.raise_for_status()
+                result = response.json()
+                logger.info(f"Successfully created guardrail {result['human_readable_id']}: {result['title']}")
+                return [TextContent(
+                    type="text",
+                    text=f"Created guardrail: {result['title']}\n"
+                         f"ID: {result['human_readable_id']}\n"
+                         f"Category: {result['category']}\n"
+                         f"Enforcement Level: {result['enforcement_level']}\n"
+                         f"Status: {result['status']}\n"
+                         f"Applies To: {', '.join(result['applies_to'])}\n\n"
+                         f"UUID: {result['id']}"
+                )]
+
+            elif name == "get_guardrail":
+                guardrail_id = arguments["guardrail_id"]
+                response = await client.get(f"/guardrails/{guardrail_id}")
+                response.raise_for_status()
+                result = response.json()
+                logger.info(f"Successfully retrieved guardrail {guardrail_id}")
+                return [TextContent(
+                    type="text",
+                    text=f"Guardrail: {result['title']} ({result['human_readable_id']})\n"
+                         f"Category: {result['category']}\n"
+                         f"Enforcement Level: {result['enforcement_level']}\n"
+                         f"Status: {result['status']}\n"
+                         f"Applies To: {', '.join(result['applies_to'])}\n"
+                         f"Created: {result['created_at']}\n"
+                         f"Updated: {result['updated_at']}\n\n"
+                         f"Content:\n{result['content']}"
+                )]
+
             else:
                 logger.warning(f"Unknown tool requested: {name}")
                 return [TextContent(type="text", text=f"Unknown tool: {name}")]
