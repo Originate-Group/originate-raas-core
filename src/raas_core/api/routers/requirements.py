@@ -365,9 +365,20 @@ def delete_requirement(
     current_user = get_current_user_optional(request)
     user_id = current_user.id if current_user else None
 
-    success = crud.delete_requirement(db, existing.id, user_id=user_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Requirement not found")
+    try:
+        success = crud.delete_requirement(db, existing.id, user_id=user_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Requirement not found")
+    except ValueError as e:
+        # Permission denied or dependency blocking deletion
+        error_message = str(e)
+        logger.warning(f"Delete blocked for requirement {requirement_id}: {error_message}")
+
+        if "admin role" in error_message.lower() or "permission" in error_message.lower():
+            raise HTTPException(status_code=403, detail=error_message)
+        else:
+            # Other validation errors (e.g., dependent requirements exist)
+            raise HTTPException(status_code=400, detail=error_message)
 
 
 @router.get("/audit/hierarchy-violations")
