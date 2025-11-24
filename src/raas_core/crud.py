@@ -1716,7 +1716,7 @@ def update_guardrail(
     db: Session,
     guardrail_id: str,
     content: str,
-    user_id: UUID,
+    user_id: Optional[UUID] = None,
 ) -> models.Guardrail:
     """
     Update an existing guardrail.
@@ -1725,7 +1725,7 @@ def update_guardrail(
         db: Database session
         guardrail_id: UUID or human-readable ID
         content: Full markdown content with YAML frontmatter
-        user_id: User UUID (updater)
+        user_id: User UUID (updater), None for solo mode
 
     Returns:
         Updated guardrail instance
