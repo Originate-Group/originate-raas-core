@@ -1045,11 +1045,7 @@ async def handle_list_guardrails(
     params = {}
     for key in ["organization_id", "category", "enforcement_level", "applies_to", "status", "search", "page", "page_size"]:
         if key in arguments and arguments[key] is not None:
-            # Handle 'all' status - convert to None to show all statuses
-            if key == "status" and arguments[key] == "all":
-                params[key] = None
-            else:
-                params[key] = arguments[key]
+            params[key] = arguments[key]
 
     response = await client.get("/guardrails/", params=params)
     response.raise_for_status()

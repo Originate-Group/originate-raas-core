@@ -145,6 +145,9 @@ async def list_guardrails(
     """
     skip = (page - 1) * page_size
 
+    # Handle 'all' status filter - pass None to show all statuses
+    status_filter = None if status == "all" else status
+
     guardrails, total = crud.list_guardrails(
         db=db,
         skip=skip,
@@ -153,7 +156,7 @@ async def list_guardrails(
         category=category,
         enforcement_level=enforcement_level,
         applies_to=applies_to,
-        status=status,
+        status=status_filter,
         search=search,
     )
 
