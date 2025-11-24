@@ -1,32 +1,75 @@
 # RaaS Core
 
-Shared requirements management engine used by all RaaS deployments.
+**Requirements as a Service** - Core library and solo developer deployment.
+
+## Quick Start (Solo Developers)
+
+Get up and running in 5 minutes:
+
+```bash
+git clone --recursive https://github.com/Originate-Group/originate-raas-core.git
+cd originate-raas-core
+docker compose up
+```
+
+Access the API at: **http://localhost:8000/docs**
+
+### MCP Integration (Claude Desktop)
+
+Configure MCP stdio server in Claude Desktop:
+
+```json
+{
+  "mcpServers": {
+    "raas": {
+      "command": "docker",
+      "args": ["compose", "exec", "-T", "api", "python", "-m", "raas_mcp.server"],
+      "env": {
+        "API_BASE_URL": "http://api:8000/api/v1"
+      }
+    }
+  }
+}
+```
+
+Now you can use Claude to manage requirements:
+- Create organizations and projects
+- Define epics, components, features, and requirements
+- Track dependencies and lifecycle status
+- Generate requirement templates
+
+---
+
+## For Teams (Self-Hosted with Authentication)
+
+Use **[originate-raas-team](https://github.com/Originate-Group/originate-raas-team)** for:
+- OAuth 2.1 + Keycloak authentication
+- Personal Access Tokens (PAT)
+- Multi-user organizations
+- Remote MCP service
+
+---
 
 ## Overview
 
 RaaS Core provides the foundational components for AI-native requirements management:
 
+- **🐳 Container-First**: Docker deployment for development and production
 - **Database Models**: SQLAlchemy models for Users, Organizations, Projects, and Requirements
 - **CRUD Operations**: Complete data access layer for all entities
+- **FastAPI Routers**: REST API endpoints (no authentication in core, auth added by team deployment)
 - **Markdown Utilities**: YAML frontmatter parsing and requirement template system
 - **4-Level Hierarchy**: Epic → Component → Feature → Requirement structure
 - **MCP Server**: Model Context Protocol integration for AI assistants
 
-## For End Users
+---
 
-**Don't use this package directly.** Instead, use one of the deployment repositories:
-
-- **[raas-solo](https://github.com/Originate-Group/originate-raas-solo)** - For solo developers (zero auth, 5-minute setup)
-- **[raas-teams](https://github.com/Originate-Group/originate-raas-teams)** - For self-hosted teams (simple auth, 15-minute setup)
-
-## For Contributors
-
-### Installation
+## For Contributors (Library Development)
 
 ```bash
 # Clone with git
 git clone https://github.com/Originate-Group/originate-raas-core.git
-cd raas-core
+cd originate-raas-core
 
 # Install dependencies
 pip install -e .
