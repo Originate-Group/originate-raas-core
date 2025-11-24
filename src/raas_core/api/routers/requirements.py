@@ -4,10 +4,12 @@ from typing import Optional
 from uuid import UUID
 from math import ceil
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from raas_core import crud, schemas, models
 from raas_core.markdown_utils import load_template
+from raas_core.hierarchy_validation import find_hierarchy_violations
+from raas_core.api.dependencies import get_current_user_optional
 
 from ..database import get_db
 
@@ -45,6 +47,7 @@ def get_requirement_template(req_type: models.RequirementType):
 @router.post("/", response_model=schemas.RequirementResponse, status_code=201)
 def create_requirement(
     requirement: schemas.RequirementCreate,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """
@@ -109,12 +112,16 @@ def create_requirement(
         else:
             raise HTTPException(status_code=400, detail="Content must start with YAML frontmatter (---)")
 
+    # Get current user (for permission checking in team mode, None in solo mode)
+    current_user = get_current_user_optional(request)
+    user_id = current_user.id if current_user else None
+
     try:
         result = crud.create_requirement(
             db=db,
             requirement=requirement,
             organization_id=organization_id,
-            user_id=None,  # Solo mode - no user
+            user_id=user_id,
             project_id=requirement.project_id
         )
         logger.info(f"Created {result.type.value} '{result.title}' (ID: {result.id})")
@@ -262,6 +269,7 @@ def get_requirement_history(
 def update_requirement(
     requirement_id: str,
     requirement_update: schemas.RequirementUpdate,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """
@@ -279,9 +287,13 @@ def update_requirement(
     if not existing:
         raise HTTPException(status_code=404, detail=f"Requirement not found: {requirement_id}")
 
+    # Get current user (for permission checking in team mode, None in solo mode)
+    current_user = get_current_user_optional(request)
+    user_id = current_user.id if current_user else None
+
     try:
         requirement = crud.update_requirement(
-            db, existing.id, requirement_update, user_id=None  # Solo mode - no user
+            db, existing.id, requirement_update, user_id=user_id
         )
         return requirement
     except ValueError as e:
@@ -305,6 +317,7 @@ def update_requirement(
 @router.delete("/{requirement_id}", status_code=204)
 def delete_requirement(
     requirement_id: str,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """
@@ -321,6 +334,44 @@ def delete_requirement(
     if not existing:
         raise HTTPException(status_code=404, detail=f"Requirement not found: {requirement_id}")
 
-    success = crud.delete_requirement(db, existing.id)
+    # Get current user (for permission checking in team mode, None in solo mode)
+    current_user = get_current_user_optional(request)
+    user_id = current_user.id if current_user else None
+
+    success = crud.delete_requirement(db, existing.id, user_id=user_id)
     if not success:
         raise HTTPException(status_code=404, detail="Requirement not found")
+
+
+@router.get("/audit/hierarchy-violations")
+def get_hierarchy_violations(
+    project_id: Optional[UUID] = Query(None, description="Filter by project ID"),
+    db: Session = Depends(get_db),
+):
+    """
+    Find all requirements that violate hierarchy rules.
+
+    This endpoint identifies existing requirements with invalid parent-child
+    type relationships (created before validation was enforced) and provides
+    remediation guidance.
+
+    Returns:
+    - requirement_id: UUID of the requirement
+    - requirement_human_id: Human-readable ID (e.g., RAAS-FEAT-042)
+    - requirement_title: Title of the requirement
+    - requirement_type: Type (epic, component, feature, requirement)
+    - parent_id: UUID of the parent (if exists)
+    - parent_human_id: Human-readable ID of parent
+    - parent_title: Title of the parent
+    - parent_type: Type of the parent
+    - expected_parent_type: What type the parent should be
+    - violation: Description of the violation
+
+    - **project_id**: Optional filter to only check requirements in a specific project
+    """
+    violations = find_hierarchy_violations(db, project_id)
+    return {
+        "violations": violations,
+        "total": len(violations),
+        "project_id": str(project_id) if project_id else None,
+    }

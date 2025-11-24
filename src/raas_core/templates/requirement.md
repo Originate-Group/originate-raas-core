@@ -4,6 +4,11 @@ title: "{title}"
 parent_id: {parent_id}
 status: {status}
 tags: {tags}
+depends_on: []
+# IMPORTANT: Populate dependencies during creation, especially in batch operations!
+# List requirement UUIDs or human-readable IDs this requirement depends on
+# Example: ["RAAS-REQ-001", "RAAS-FEAT-028"]
+# Missing dependencies during batch creation causes implementation issues later
 adheres_to: []
 # OPTIONAL: List guardrails this requirement adheres to
 # Can use UUID (e.g., "123e4567-e89b-12d3-a456-426614174000")

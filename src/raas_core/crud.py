@@ -17,6 +17,13 @@ from .dependencies import (
     can_transition_to_deployed,
     CircularDependencyError,
 )
+from .hierarchy_validation import validate_parent_type, HierarchyValidationError
+from .permissions import (
+    can_create_requirement,
+    can_update_requirement,
+    can_delete_requirement,
+    PermissionDeniedError,
+)
 
 logger = logging.getLogger("raas-api.crud")
 
@@ -98,6 +105,14 @@ def create_requirement(
     depends_on = metadata.get("depends_on", [])
     adheres_to = metadata.get("adheres_to", [])
 
+    # Validate parent-child type relationship (Epic > Component > Feature > Requirement)
+    try:
+        validate_parent_type(db, requirement.type, parent_id)
+    except HierarchyValidationError as e:
+        # Return clear, actionable error message for hierarchy violations
+        logger.warning(f"Hierarchy validation failed: {e.message}")
+        raise ValueError(e.message)
+
     # Determine project_id based on requirement type
     resolved_project_id = None
 
@@ -144,6 +159,14 @@ def create_requirement(
             )
         # Inherit project_id from parent
         resolved_project_id = parent.project_id
+
+    # Check permissions (RAAS-FEAT-048: Permission Validation & Enforcement)
+    if user_id:  # Only check permissions if user_id is provided (not solo mode)
+        try:
+            can_create_requirement(db, user_id, resolved_project_id)
+        except PermissionDeniedError as e:
+            logger.warning(f"Permission denied for user {user_id} creating requirement: {e.message}")
+            raise ValueError(e.message)
 
     # Calculate content length and quality score
     content_length = len(requirement.content) if requirement.content else 0
@@ -435,6 +458,14 @@ def update_requirement(
     if not db_requirement:
         return None
 
+    # Check permissions (RAAS-FEAT-048: Permission Validation & Enforcement)
+    if user_id:  # Only check permissions if user_id is provided (not solo mode)
+        try:
+            can_update_requirement(db, user_id, requirement_id)
+        except PermissionDeniedError as e:
+            logger.warning(f"Permission denied for user {user_id} updating requirement {requirement_id}: {e.message}")
+            raise ValueError(e.message)
+
     # Update the updated_by_user_id
     db_requirement.updated_by_user_id = user_id
 
@@ -456,6 +487,17 @@ def update_requirement(
             # Extract guardrail references from metadata
             if "adheres_to" in metadata:
                 new_adheres_to = metadata["adheres_to"]
+
+            # Validate parent_id change (if parent_id is in metadata and is changing)
+            if "parent_id" in metadata and metadata["parent_id"] != db_requirement.parent_id:
+                try:
+                    validate_parent_type(db, db_requirement.type, metadata["parent_id"])
+                except HierarchyValidationError as e:
+                    logger.warning(f"Hierarchy validation failed on update: {e.message}")
+                    raise ValueError(e.message)
+                # Track parent_id change
+                changes.append(("parent_id", str(db_requirement.parent_id), str(metadata["parent_id"])))
+                db_requirement.parent_id = metadata["parent_id"]
 
             # Validate status transition if status is changing
             if "status" in metadata and metadata["status"] != db_requirement.status:
@@ -654,7 +696,7 @@ def update_requirement(
     return db_requirement
 
 
-def delete_requirement(db: Session, requirement_id: UUID) -> bool:
+def delete_requirement(db: Session, requirement_id: UUID, user_id: Optional[UUID] = None) -> bool:
     """
     Delete a requirement and all its children recursively.
 
@@ -663,16 +705,25 @@ def delete_requirement(db: Session, requirement_id: UUID) -> bool:
     Args:
         db: Database session
         requirement_id: Requirement UUID
+        user_id: User UUID (who is deleting)
 
     Returns:
         True if deleted, False if not found
 
     Raises:
-        ValueError: If other requirements depend on this one
+        ValueError: If other requirements depend on this one or permission denied
     """
     db_requirement = get_requirement(db, requirement_id)
     if not db_requirement:
         return False
+
+    # Check permissions (RAAS-FEAT-048: Permission Validation & Enforcement)
+    if user_id:  # Only check permissions if user_id is provided (not solo mode)
+        try:
+            can_delete_requirement(db, user_id, requirement_id)
+        except PermissionDeniedError as e:
+            logger.warning(f"Permission denied for user {user_id} deleting requirement {requirement_id}: {e.message}")
+            raise ValueError(e.message)
 
     # Check if other requirements depend on this one
     dependents = (
