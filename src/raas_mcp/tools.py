@@ -792,7 +792,8 @@ def get_tools() -> list[Tool]:
                     },
                     "ready_to_implement": {
                         "type": "boolean",
-                        "description": "Filter for requirements ready to implement (true = all dependencies deployed, false = has unmet dependencies). "
+                        "description": "Filter for requirements ready to implement (true = all dependencies code-complete, false = has unmet dependencies). "
+                                     "Code-complete means implemented, validated, or deployed. "
                                      "Use this to find 'next available work' - requirements that are unblocked and can be started immediately."
                     },
                     "blocked_by": {

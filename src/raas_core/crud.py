@@ -347,7 +347,7 @@ def get_requirements(
         organization_ids: Filter by organization IDs (for multi-user access control)
         project_id: Filter by project ID
         include_deployed: Include deployed items (default: False, deployed items excluded)
-        ready_to_implement: Filter for requirements with all dependencies deployed (True) or with unmet dependencies (False)
+        ready_to_implement: Filter for requirements with all dependencies code-complete (True) or with unmet dependencies (False). Code-complete = implemented, validated, or deployed.
         blocked_by: Filter for requirements that depend on the specified requirement ID
 
     Returns:
@@ -428,8 +428,14 @@ def get_requirements(
                 .all()
             )
 
-            # Check if ready to implement (all dependencies deployed or no dependencies)
-            is_ready = not deps or all(dep.status == models.LifecycleStatus.DEPLOYED for dep in deps)
+            # Check if ready to implement (all dependencies have code complete or no dependencies)
+            # Code complete = implemented, validated, or deployed
+            CODE_COMPLETE_STATUSES = {
+                models.LifecycleStatus.IMPLEMENTED,
+                models.LifecycleStatus.VALIDATED,
+                models.LifecycleStatus.DEPLOYED,
+            }
+            is_ready = not deps or all(dep.status in CODE_COMPLETE_STATUSES for dep in deps)
 
             if ready_to_implement == is_ready:
                 filtered_requirements.append(req)
