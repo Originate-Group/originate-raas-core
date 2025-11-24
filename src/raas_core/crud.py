@@ -96,6 +96,7 @@ def create_requirement(
     tags = metadata["tags"]
     parent_id = metadata["parent_id"]
     depends_on = metadata.get("depends_on", [])
+    adheres_to = metadata.get("adheres_to", [])
 
     # Determine project_id based on requirement type
     resolved_project_id = None
@@ -164,6 +165,7 @@ def create_requirement(
             content=requirement.content,
             status=status,
             tags=tags,
+            adheres_to=adheres_to,
             content_length=content_length,
             quality_score=quality_score,
             organization_id=organization_id,
@@ -172,7 +174,7 @@ def create_requirement(
             updated_by_user_id=user_id,
         )
         db.add(db_requirement)
-        db.flush()  # Flush to get the ID before validating dependencies
+        db.flush()  # Flush to get the ID before validating dependencies and guardrails
 
         # Validate and store dependencies
         if depends_on:
@@ -199,6 +201,15 @@ def create_requirement(
                         depends_on_id=dep_id
                     )
                 )
+
+        # Validate guardrail references
+        if adheres_to:
+            for guardrail_id in adheres_to:
+                guardrail = get_guardrail(db, guardrail_id, organization_id)
+                if not guardrail:
+                    logger.warning(f"Invalid guardrail reference: {guardrail_id}")
+                    db.rollback()
+                    raise ValueError(f"Invalid guardrail reference '{guardrail_id}': guardrail not found or not in same organization")
 
         db.commit()
         db.refresh(db_requirement)
@@ -431,6 +442,7 @@ def update_requirement(
     changes = []
     update_data = requirement_update.model_dump(exclude_unset=True)
     new_dependencies = None  # Track dependency updates
+    new_adheres_to = None  # Track guardrail reference updates
 
     # If markdown content is provided, parse it and extract metadata
     if "content" in update_data and update_data["content"]:
@@ -440,6 +452,10 @@ def update_requirement(
             # Extract dependencies from metadata
             if "depends_on" in metadata:
                 new_dependencies = metadata["depends_on"]
+
+            # Extract guardrail references from metadata
+            if "adheres_to" in metadata:
+                new_adheres_to = metadata["adheres_to"]
 
             # Validate status transition if status is changing
             if "status" in metadata and metadata["status"] != db_requirement.status:
@@ -493,6 +509,10 @@ def update_requirement(
         # Extract dependencies if provided directly (not through content)
         if "depends_on" in update_data:
             new_dependencies = update_data["depends_on"]
+
+        # Extract guardrail references if provided directly (not through content)
+        if "adheres_to" in update_data:
+            new_adheres_to = update_data["adheres_to"]
 
         # Validate status transition BEFORE making any changes
         if "status" in update_data and update_data["status"] != db_requirement.status:
@@ -595,6 +615,20 @@ def update_requirement(
             )
 
         changes.append(("dependencies", "dependencies updated", "dependencies updated"))
+
+    # Validate and update guardrail references if provided
+    if new_adheres_to is not None:
+        # Validate guardrail references
+        if new_adheres_to:  # Only validate if there are references
+            for guardrail_id in new_adheres_to:
+                guardrail = get_guardrail(db, guardrail_id, db_requirement.organization_id)
+                if not guardrail:
+                    logger.warning(f"Invalid guardrail reference: {guardrail_id}")
+                    raise ValueError(f"Invalid guardrail reference '{guardrail_id}': guardrail not found or not in same organization")
+
+        # Update adheres_to field
+        db_requirement.adheres_to = new_adheres_to
+        changes.append(("adheres_to", "guardrail references updated", "guardrail references updated"))
 
     if changes:
         db.commit()

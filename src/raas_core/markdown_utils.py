@@ -230,7 +230,7 @@ def extract_metadata(content: str) -> Dict[str, Any]:
         content: The markdown content to parse
 
     Returns:
-        Dictionary containing: type, title, description, status, tags, parent_id, depends_on
+        Dictionary containing: type, title, description, status, tags, parent_id, depends_on, adheres_to
 
     Raises:
         MarkdownParseError: If content is invalid
@@ -263,6 +263,7 @@ def extract_metadata(content: str) -> Dict[str, Any]:
         "tags": frontmatter.get("tags", []),
         "parent_id": frontmatter.get("parent_id"),
         "depends_on": frontmatter.get("depends_on", []),
+        "adheres_to": frontmatter.get("adheres_to", []),
     }
 
     # Convert parent_id string to UUID if present and not null
@@ -285,6 +286,15 @@ def extract_metadata(content: str) -> Dict[str, Any]:
             except (ValueError, AttributeError) as e:
                 raise MarkdownParseError(f"Invalid dependency UUID '{dep_id}': {e}")
     metadata["depends_on"] = depends_on_uuids
+
+    # Validate adheres_to is a list (can contain UUIDs or human-readable IDs)
+    adheres_to_list = []
+    if metadata["adheres_to"]:
+        if not isinstance(metadata["adheres_to"], list):
+            raise MarkdownParseError("adheres_to must be a list of guardrail identifiers")
+        # Keep as strings - can be UUID or human-readable ID (e.g., GUARD-SEC-001)
+        adheres_to_list = [str(g) for g in metadata["adheres_to"]]
+    metadata["adheres_to"] = adheres_to_list
 
     return metadata
 

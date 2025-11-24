@@ -31,6 +31,7 @@ class RequirementBase(BaseModel):
     status: LifecycleStatus = LifecycleStatus.DRAFT
     tags: list[str] = Field(default_factory=list)
     depends_on: list[UUID] = Field(default_factory=list, description="List of requirement IDs this depends on")
+    adheres_to: list[str] = Field(default_factory=list, description="List of guardrail identifiers (UUID or human-readable) this requirement adheres to")
 
 
 class RequirementCreate(BaseModel):
@@ -65,6 +66,7 @@ class RequirementUpdate(BaseModel):
     status: Optional[LifecycleStatus] = None
     tags: Optional[list[str]] = None
     depends_on: Optional[list[UUID]] = None  # Update dependencies
+    adheres_to: Optional[list[str]] = None  # Update guardrail references
     # Legacy fields - DEPRECATED and ignored
     title: Optional[str] = Field(None, min_length=1, max_length=200)
 
@@ -82,6 +84,7 @@ class RequirementListItem(BaseModel):
     status: LifecycleStatus
     tags: list[str] = Field(default_factory=list)
     depends_on: list[UUID] = Field(default_factory=list, description="List of requirement IDs this depends on")
+    adheres_to: list[str] = Field(default_factory=list, description="List of guardrail identifiers this requirement adheres to")
     created_at: datetime
     updated_at: datetime
     created_by: Optional[str] = None

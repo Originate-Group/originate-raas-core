@@ -341,6 +341,7 @@ class Requirement(Base):
 
     # Metadata
     tags = Column(ARRAY(String), default=[])
+    adheres_to = Column(ARRAY(String), default=[])  # Guardrail identifiers (UUID or human-readable)
 
     # Quality tracking
     content_length = Column(Integer, nullable=False, default=0)

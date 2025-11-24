@@ -4,6 +4,11 @@ title: "{title}"
 parent_id: {parent_id}
 status: {status}
 tags: {tags}
+adheres_to: []
+# OPTIONAL: List guardrails this requirement adheres to
+# Can use UUID (e.g., "123e4567-e89b-12d3-a456-426614174000")
+# or human-readable ID (e.g., "GUARD-SEC-001")
+# Use list_guardrails tool to discover available guardrails
 ---
 
 # Requirement: {title}
