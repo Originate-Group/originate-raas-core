@@ -788,7 +788,10 @@ async def handle_update_requirement(
     • Clear dependencies: update_requirement(requirement_id='...', depends_on=[])
     """
     req_id = arguments.pop("requirement_id")
-    response = await client.patch(f"/requirements/{req_id}", json=arguments)
+    # Extract persona for header (not part of JSON body)
+    persona = arguments.pop("persona", None)
+    headers = {"X-Persona": persona} if persona else {}
+    response = await client.patch(f"/requirements/{req_id}", json=arguments, headers=headers)
     response.raise_for_status()
     result = response.json()
     logger.info(f"Successfully updated requirement {req_id}: {result['title']}")
@@ -889,15 +892,23 @@ async def handle_transition_status(
     • Can move backward 1+ steps (e.g., review → draft, approved → draft)
     • CANNOT skip steps (e.g., draft → approved is blocked, must go draft → review → approved)
     • deployed is terminal (cannot transition out, create new requirement instead)
+
+    PERSONA AUTHORIZATION:
+    • Different transitions require different personas
+    • Declare your persona to authorize the transition
     """
     req_id = arguments["requirement_id"]
     new_status = arguments["new_status"]
-    response = await client.patch(f"/requirements/{req_id}", json={"status": new_status})
+    persona = arguments.get("persona")
+    headers = {"X-Persona": persona} if persona else {}
+    response = await client.patch(f"/requirements/{req_id}", json={"status": new_status}, headers=headers)
     response.raise_for_status()
     result = response.json()
     logger.info(f"Successfully transitioned requirement {req_id} to status: {new_status}")
 
     text = f"Transitioned '{result['title']}' to status: {new_status}"
+    if persona:
+        text += f" (persona: {persona})"
     return [TextContent(type="text", text=text)], current_scope
 
 

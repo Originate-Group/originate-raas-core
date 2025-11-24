@@ -31,6 +31,11 @@ from .permissions import (
     can_delete_requirement,
     PermissionDeniedError,
 )
+from .persona_auth import (
+    Persona,
+    validate_persona_authorization,
+    PersonaAuthorizationError,
+)
 
 logger = logging.getLogger("raas-api.crud")
 
@@ -451,6 +456,7 @@ def update_requirement(
     requirement_id: UUID,
     requirement_update: schemas.RequirementUpdate,
     user_id: UUID,
+    persona: Optional[Persona] = None,
 ) -> Optional[models.Requirement]:
     """
     Update a requirement.
@@ -464,12 +470,13 @@ def update_requirement(
         requirement_id: Requirement UUID
         requirement_update: Update data
         user_id: User UUID (who is making the update)
+        persona: Declared workflow persona for authorization (optional for now)
 
     Returns:
         Updated requirement or None if not found
 
     Raises:
-        ValueError: If provided markdown content is invalid
+        ValueError: If provided markdown content is invalid or persona not authorized
     """
     db_requirement = get_requirement(db, requirement_id)
     if not db_requirement:
@@ -542,6 +549,34 @@ def update_requirement(
                     )
                     raise ValueError(str(e))
 
+                # Validate persona authorization for the transition (after state machine validation)
+                # Get organization settings for potential custom persona matrix
+                org = get_organization(db, db_requirement.organization_id) if db_requirement.organization_id else None
+                org_settings = org.settings if org else None
+                try:
+                    validate_persona_authorization(
+                        persona=persona,
+                        from_status=db_requirement.status,
+                        to_status=metadata["status"],
+                        org_settings=org_settings,
+                        require_persona=False,  # Optional for now during rollout
+                    )
+                except PersonaAuthorizationError as e:
+                    logger.warning(f"Persona authorization blocked: {e}")
+                    # Log failed transition attempt to audit trail
+                    persona_str = persona.value if persona else "none"
+                    _create_history_entry(
+                        db=db,
+                        requirement_id=requirement_id,
+                        change_type=models.ChangeType.STATUS_CHANGED,
+                        field_name="status",
+                        old_value=db_requirement.status.value,
+                        new_value=metadata["status"].value,
+                        change_reason=f"BLOCKED (persona={persona_str}): {str(e)}",
+                        user_id=user_id,
+                    )
+                    raise ValueError(str(e))
+
             # Update all fields from markdown
             for field in ["title", "description", "status", "tags"]:
                 if field in metadata:
@@ -596,6 +631,34 @@ def update_requirement(
                     old_value=db_requirement.status.value,
                     new_value=update_data["status"].value,
                     change_reason=f"BLOCKED: {str(e)}",
+                    user_id=user_id,
+                )
+                raise ValueError(str(e))
+
+            # Validate persona authorization for the transition (after state machine validation)
+            # Get organization settings for potential custom persona matrix
+            org = get_organization(db, db_requirement.organization_id) if db_requirement.organization_id else None
+            org_settings = org.settings if org else None
+            try:
+                validate_persona_authorization(
+                    persona=persona,
+                    from_status=db_requirement.status,
+                    to_status=update_data["status"],
+                    org_settings=org_settings,
+                    require_persona=False,  # Optional for now during rollout
+                )
+            except PersonaAuthorizationError as e:
+                logger.warning(f"Persona authorization blocked: {e}")
+                # Log failed transition attempt to audit trail
+                persona_str = persona.value if persona else "none"
+                _create_history_entry(
+                    db=db,
+                    requirement_id=requirement_id,
+                    change_type=models.ChangeType.STATUS_CHANGED,
+                    field_name="status",
+                    old_value=db_requirement.status.value,
+                    new_value=update_data["status"].value,
+                    change_reason=f"BLOCKED (persona={persona_str}): {str(e)}",
                     user_id=user_id,
                 )
                 raise ValueError(str(e))
@@ -703,6 +766,10 @@ def update_requirement(
                 if field == "status"
                 else models.ChangeType.UPDATED
             )
+            # Include persona in status change audit logs
+            change_reason = None
+            if field == "status" and persona:
+                change_reason = f"persona={persona.value}"
             _create_history_entry(
                 db=db,
                 requirement_id=requirement_id,
@@ -710,6 +777,7 @@ def update_requirement(
                 field_name=field,
                 old_value=old_val,
                 new_value=new_val,
+                change_reason=change_reason,
                 user_id=user_id,
             )
 

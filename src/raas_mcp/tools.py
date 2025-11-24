@@ -912,6 +912,13 @@ def get_tools() -> list[Tool]:
                         "type": "array",
                         "items": {"type": "string"},
                         "description": "DEPRECATED: Use content field instead. This is specified in markdown frontmatter."
+                    },
+                    "persona": {
+                        "type": "string",
+                        "enum": ["enterprise_architect", "product_owner", "scrum_master", "developer", "tester", "release_manager"],
+                        "description": "OPTIONAL: Declare your workflow persona for status transitions. "
+                                     "Required when persona enforcement is enabled. "
+                                     "Different personas are authorized for different transitions (e.g., only testers can validate, only release_manager can deploy)."
                     }
                 },
                 "required": ["requirement_id"]
@@ -1022,12 +1029,20 @@ def get_tools() -> list[Tool]:
                        "\n• CANNOT skip steps (e.g., draft → approved is blocked, must go draft → review → approved)"
                        "\n• deployed is terminal (cannot transition out, create new requirement instead)"
                        "\n• Same-status transitions allowed (no-op)"
+                       "\n\nPERSONA AUTHORIZATION:"
+                       "\n• Different transitions require different personas"
+                       "\n• Developer: draft→review, in_progress→implemented"
+                       "\n• Tester: implemented→validated (cannot self-validate!)"
+                       "\n• Release Manager: validated→deployed"
+                       "\n• Product Owner: review→approved"
+                       "\n• Declare your persona to authorize the transition"
                        "\n\nCOMMON PATTERNS:"
-                       "\n• Submit for review: draft → review"
-                       "\n• Approve after review: review → approved"
-                       "\n• Start work: approved → in_progress"
-                       "\n• Complete implementation: in_progress → implemented"
-                       "\n• Send back for revision: review → draft, or implemented → in_progress"
+                       "\n• Submit for review: draft → review (persona=developer)"
+                       "\n• Approve after review: review → approved (persona=product_owner)"
+                       "\n• Start work: approved → in_progress (persona=developer)"
+                       "\n• Complete implementation: in_progress → implemented (persona=developer)"
+                       "\n• Validate: implemented → validated (persona=tester)"
+                       "\n• Deploy: validated → deployed (persona=release_manager)"
                        "\n\nWHEN TO USE:"
                        "\n• Use this tool for simple status-only changes (no other modifications)"
                        "\n• Use update_requirement() if you need to change content, dependencies, or other fields"
@@ -1039,7 +1054,7 @@ def get_tools() -> list[Tool]:
                        "\n• 404: Requirement not found"
                        "\n• 400: Invalid state transition (e.g., draft → approved without review)"
                        "\n• 400: Invalid status value (not one of 7 valid statuses)"
-                       "\n• 403: Forbidden (no permission to update)",
+                       "\n• 403: Forbidden (no permission to update or persona not authorized)",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -1051,6 +1066,12 @@ def get_tools() -> list[Tool]:
                         "type": "string",
                         "enum": ["draft", "review", "approved", "in_progress", "implemented", "validated", "deployed"],
                         "description": "Target status"
+                    },
+                    "persona": {
+                        "type": "string",
+                        "enum": ["enterprise_architect", "product_owner", "scrum_master", "developer", "tester", "release_manager"],
+                        "description": "Declare your workflow persona to authorize the transition. "
+                                     "Different transitions require different personas (e.g., only testers can validate, only release_manager can deploy)."
                     }
                 },
                 "required": ["requirement_id", "new_status"]

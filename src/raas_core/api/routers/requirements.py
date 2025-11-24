@@ -4,12 +4,13 @@ from typing import Optional
 from uuid import UUID
 from math import ceil
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Header
 from sqlalchemy.orm import Session
 from raas_core import crud, schemas, models
 from raas_core.markdown_utils import load_template
 from raas_core.hierarchy_validation import find_hierarchy_violations
 from raas_core.api.dependencies import get_current_user_optional
+from raas_core.persona_auth import Persona
 
 from ..database import get_db
 
@@ -270,6 +271,11 @@ def update_requirement(
     requirement_id: str,
     requirement_update: schemas.RequirementUpdate,
     request: Request,
+    x_persona: Optional[str] = Header(
+        None,
+        description="Workflow persona making this request (e.g., developer, tester, release_manager). "
+                    "Required for status transitions when persona enforcement is enabled."
+    ),
     db: Session = Depends(get_db),
 ):
     """
@@ -281,6 +287,7 @@ def update_requirement(
     - **content**: New markdown content (optional)
     - **status**: New status (optional)
     - **tags**: New tags list (optional)
+    - **X-Persona**: Header declaring the workflow persona (developer, tester, etc.)
     """
     # Check requirement exists
     existing = crud.get_requirement_by_any_id(db, requirement_id)
@@ -291,22 +298,42 @@ def update_requirement(
     current_user = get_current_user_optional(request)
     user_id = current_user.id if current_user else None
 
+    # Parse persona from header
+    persona = None
+    if x_persona:
+        try:
+            persona = Persona(x_persona.lower())
+        except ValueError:
+            valid_personas = [p.value for p in Persona]
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid persona: {x_persona}. Valid personas: {', '.join(valid_personas)}"
+            )
+
     try:
         requirement = crud.update_requirement(
-            db, existing.id, requirement_update, user_id=user_id
+            db, existing.id, requirement_update, user_id=user_id, persona=persona
         )
         return requirement
     except ValueError as e:
-        # Catch validation errors (state machine, content length, etc.)
+        # Catch validation errors (state machine, content length, persona auth, etc.)
         error_message = str(e)
         logger.warning(f"Validation failed for requirement {requirement_id}: {error_message}")
 
-        # Determine if this is a state transition error or other validation error
+        # Determine if this is a state transition error, persona error, or other
         if "Invalid status transition" in error_message:
             raise HTTPException(
                 status_code=400,
                 detail={
                     "error": "invalid_status_transition",
+                    "message": error_message
+                }
+            )
+        elif "not authorized for transition" in error_message or "Persona declaration required" in error_message:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": "persona_authorization_failed",
                     "message": error_message
                 }
             )
