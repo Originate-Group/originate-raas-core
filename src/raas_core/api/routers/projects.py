@@ -88,8 +88,8 @@ def list_projects(
         skip=skip,
         limit=page_size,
         organization_id=organization_id,
-        status=status,
-        visibility=visibility,
+        status_filter=status,
+        visibility_filter=visibility,
         search=search,
     )
 
