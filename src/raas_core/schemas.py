@@ -104,7 +104,7 @@ class RequirementListItem(BaseModel):
     quality_score: QualityScore = Field(description="Quality score based on content length")
     child_count: int = Field(description="Number of direct children")
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 
 class RequirementResponse(RequirementBase):
@@ -124,7 +124,7 @@ class RequirementResponse(RequirementBase):
     quality_score: QualityScore = Field(description="Quality score based on content length")
     child_count: int = Field(description="Number of direct children")
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
     @model_validator(mode='after')
     def inject_database_state_into_content(self):
@@ -157,7 +157,7 @@ class RequirementWithChildren(RequirementResponse):
 
     children: list['RequirementResponse'] = Field(default_factory=list)
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 
 # History Schemas
@@ -175,7 +175,7 @@ class RequirementHistoryResponse(BaseModel):
     changed_at: datetime
     change_reason: Optional[str] = None
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 
 # List Response Schemas
@@ -234,7 +234,7 @@ class OrganizationResponse(OrganizationBase):
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 
 class OrganizationListResponse(BaseModel):
@@ -277,7 +277,7 @@ class OrganizationMemberResponse(OrganizationMemberBase):
     id: UUID
     joined_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 
 # ============================================================================
@@ -328,7 +328,7 @@ class ProjectResponse(ProjectBase):
     created_by_user_id: Optional[UUID] = None
     updated_by_user_id: Optional[UUID] = None
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 
 class ProjectListResponse(BaseModel):
@@ -371,7 +371,7 @@ class ProjectMemberResponse(ProjectMemberBase):
     id: UUID
     joined_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 
 # ============================================================================
@@ -387,7 +387,7 @@ class UserResponse(BaseModel):
     is_active: bool
     created_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 
 class UserListResponse(BaseModel):
@@ -434,7 +434,7 @@ class GuardrailResponse(BaseModel):
     created_by: Optional[str] = None
     updated_by: Optional[str] = None
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
     @model_validator(mode='after')
     def inject_database_state_into_content(self):
@@ -490,7 +490,7 @@ class GuardrailListItem(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 
 class GuardrailListResponse(BaseModel):
@@ -555,7 +555,7 @@ class ChangeRequestResponse(BaseModel):
     affects_count: int = Field(description="Count of requirements in declared scope")
     modifications_count: int = Field(description="Count of requirements actually modified")
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 
 class ChangeRequestListItem(BaseModel):
@@ -572,7 +572,7 @@ class ChangeRequestListItem(BaseModel):
     affects_count: int = Field(description="Count of requirements in declared scope")
     modifications_count: int = Field(description="Count of requirements actually modified")
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 
 class ChangeRequestListResponse(BaseModel):
@@ -599,7 +599,7 @@ class TaskAssigneeResponse(BaseModel):
     is_primary: bool = True
     assigned_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 
 class TaskCreate(BaseModel):
@@ -667,7 +667,7 @@ class TaskResponse(BaseModel):
     completed_at: Optional[datetime] = None
     completed_by: Optional[UUID] = None
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 
 class TaskListItem(BaseModel):
@@ -689,7 +689,7 @@ class TaskListItem(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 
 class TaskListResponse(BaseModel):
@@ -715,7 +715,7 @@ class TaskHistoryResponse(BaseModel):
     changed_by: Optional[UUID] = None
     changed_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 
 # =============================================================================
@@ -781,7 +781,7 @@ class RoutingRuleResponse(BaseModel):
     updated_at: datetime
     created_by: Optional[UUID] = None
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 
 class RoutingRuleListResponse(BaseModel):
@@ -813,7 +813,7 @@ class TaskDelegationResponse(BaseModel):
     reason: Optional[str] = None
     delegated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 
 class TaskEscalationCreate(BaseModel):
@@ -837,7 +837,7 @@ class TaskEscalationResponse(BaseModel):
     escalated_at: datetime
     escalated_by_system: bool
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 
 # =============================================================================
@@ -901,7 +901,7 @@ class ClarificationPointResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 
 class ClarificationPointListResponse(BaseModel):
@@ -949,7 +949,7 @@ class QuestionFrameworkResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 
 class QuestionFrameworkListResponse(BaseModel):
@@ -1014,7 +1014,7 @@ class ElicitationSessionResponse(BaseModel):
     expires_at: Optional[datetime] = None
     created_by: Optional[UUID] = None
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 
 class ElicitationSessionListItem(BaseModel):
@@ -1034,7 +1034,7 @@ class ElicitationSessionListItem(BaseModel):
     message_count: int = 0
     gap_count: int = 0
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 
 class ElicitationSessionListResponse(BaseModel):
