@@ -40,6 +40,8 @@ def create_clarification_point(
     created_by: Optional[UUID] = None
 ) -> ClarificationPoint:
     """Create a new clarification point."""
+    # Normalize priority to lowercase for enum lookup (handles "BLOCKING" -> "blocking")
+    priority_value = data.priority.lower() if data.priority else "medium"
     point = ClarificationPoint(
         organization_id=data.organization_id,
         project_id=data.project_id,
@@ -48,7 +50,7 @@ def create_clarification_point(
         title=data.title,
         description=data.description,
         context=data.context,
-        priority=ClarificationPriority(data.priority),
+        priority=ClarificationPriority(priority_value),
         assignee_id=data.assignee_id,
         due_date=data.due_date,
         created_by=created_by,
@@ -103,9 +105,11 @@ def list_clarification_points(
     if artifact_id:
         query = query.filter(ClarificationPoint.artifact_id == artifact_id)
     if status:
-        query = query.filter(ClarificationPoint.status == ClarificationStatus(status))
+        status_value = status.lower() if isinstance(status, str) else status
+        query = query.filter(ClarificationPoint.status == ClarificationStatus(status_value))
     if priority:
-        query = query.filter(ClarificationPoint.priority == ClarificationPriority(priority))
+        priority_value = priority.lower() if isinstance(priority, str) else priority
+        query = query.filter(ClarificationPoint.priority == ClarificationPriority(priority_value))
 
     # Order by priority (blocking first), then due date, then created_at
     priority_order = [
@@ -170,9 +174,9 @@ def update_clarification_point(
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         if field == "priority" and value:
-            value = ClarificationPriority(value)
+            value = ClarificationPriority(value.lower() if isinstance(value, str) else value)
         elif field == "status" and value:
-            value = ClarificationStatus(value)
+            value = ClarificationStatus(value.lower() if isinstance(value, str) else value)
         setattr(point, field, value)
 
     point.updated_at = datetime.now(timezone.utc)
@@ -427,7 +431,8 @@ def list_elicitation_sessions(
     if assignee_id:
         query = query.filter(ElicitationSession.assignee_id == assignee_id)
     if status:
-        query = query.filter(ElicitationSession.status == ElicitationSessionStatus(status))
+        status_value = status.lower() if isinstance(status, str) else status
+        query = query.filter(ElicitationSession.status == ElicitationSessionStatus(status_value))
     if target_artifact_type:
         query = query.filter(ElicitationSession.target_artifact_type == target_artifact_type)
     if clarification_point_id:
@@ -471,7 +476,8 @@ def update_elicitation_session(
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         if field == "status" and value:
-            value = ElicitationSessionStatus(value)
+            status_value = value.lower() if isinstance(value, str) else value
+            value = ElicitationSessionStatus(status_value)
             # Handle status transitions
             if value == ElicitationSessionStatus.COMPLETED:
                 session.completed_at = datetime.now(timezone.utc)
