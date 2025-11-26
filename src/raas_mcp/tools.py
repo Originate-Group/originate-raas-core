@@ -1651,4 +1651,190 @@ def get_tools() -> list[Tool]:
                 "required": []
             }
         ),
+
+        # =====================================================================
+        # RAAS-EPIC-026: Elicitation Tools
+        # =====================================================================
+
+        # Clarification Points (RAAS-COMP-060)
+        Tool(
+            name="create_clarification_point",
+            description="Create a clarification point to track a question or gap needing stakeholder input. "
+                       "\n\nClarification points are linked to artifacts (requirements, guardrails) and can be "
+                       "assigned to users for resolution. Use this to capture ambiguities, missing information, "
+                       "or questions that need business stakeholder answers."
+                       "\n\nPRIORITY LEVELS:"
+                       "\n• blocking: Blocks progress, needs immediate resolution"
+                       "\n• high: Important, resolve soon"
+                       "\n• medium: Normal priority (default)"
+                       "\n• low: Nice to have clarification",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "organization_id": {"type": "string", "description": "Organization UUID"},
+                    "project_id": {"type": "string", "description": "Optional project UUID"},
+                    "artifact_type": {"type": "string", "description": "Type of artifact (requirement, guardrail)"},
+                    "artifact_id": {"type": "string", "description": "UUID of the artifact needing clarification"},
+                    "title": {"type": "string", "description": "Brief title of the clarification needed"},
+                    "description": {"type": "string", "description": "Detailed description of what needs clarification"},
+                    "context": {"type": "string", "description": "Why this clarification is needed"},
+                    "priority": {"type": "string", "enum": ["blocking", "high", "medium", "low"], "description": "Priority level (default: medium)"},
+                    "assignee_id": {"type": "string", "description": "UUID of user to assign"},
+                    "due_date": {"type": "string", "description": "ISO datetime for due date"}
+                },
+                "required": ["organization_id", "artifact_type", "artifact_id", "title"]
+            }
+        ),
+        Tool(
+            name="list_clarification_points",
+            description="List clarification points with filtering. "
+                       "\n\nUse this to find clarification points by status, assignee, artifact, or priority.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "organization_id": {"type": "string", "description": "Filter by organization"},
+                    "project_id": {"type": "string", "description": "Filter by project"},
+                    "assignee_id": {"type": "string", "description": "Filter by assignee"},
+                    "artifact_type": {"type": "string", "description": "Filter by artifact type"},
+                    "artifact_id": {"type": "string", "description": "Filter by artifact ID"},
+                    "status": {"type": "string", "enum": ["pending", "in_progress", "resolved", "deferred"]},
+                    "priority": {"type": "string", "enum": ["blocking", "high", "medium", "low"]},
+                    "page": {"type": "integer", "description": "Page number (default: 1)"},
+                    "page_size": {"type": "integer", "description": "Items per page (default: 50)"}
+                },
+                "required": []
+            }
+        ),
+        Tool(
+            name="get_my_clarifications",
+            description="Get clarification points assigned to YOU ('What needs my input?'). "
+                       "\n\nThis is the primary tool for business stakeholders to see what questions need their answers. "
+                       "Returns clarifications sorted by priority (blocking first) and due date."
+                       "\n\nBy default excludes resolved clarifications.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "include_resolved": {"type": "boolean", "description": "Include resolved clarifications (default: false)"}
+                },
+                "required": []
+            }
+        ),
+        Tool(
+            name="get_clarification_point",
+            description="Get details of a specific clarification point. "
+                       "\n\nAccepts both UUID and human-readable ID (e.g., 'CLAR-001').",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "clarification_id": {"type": "string", "description": "UUID or human-readable ID"}
+                },
+                "required": ["clarification_id"]
+            }
+        ),
+        Tool(
+            name="resolve_clarification_point",
+            description="Resolve a clarification point with an answer. "
+                       "\n\nMarks the clarification as resolved and records the resolution content.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "clarification_id": {"type": "string", "description": "UUID or human-readable ID"},
+                    "resolution_content": {"type": "string", "description": "The answer/resolution to the clarification"}
+                },
+                "required": ["clarification_id", "resolution_content"]
+            }
+        ),
+
+        # Elicitation Sessions (RAAS-COMP-063)
+        Tool(
+            name="create_elicitation_session",
+            description="Create a new elicitation session for guided requirements discovery. "
+                       "\n\nSessions persist conversation history and can be paused/resumed. "
+                       "Use this when starting a Socratic questioning session with a stakeholder.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "organization_id": {"type": "string", "description": "Organization UUID"},
+                    "project_id": {"type": "string", "description": "Optional project UUID"},
+                    "target_artifact_type": {"type": "string", "description": "Type to create (epic, component, feature, requirement, guardrail)"},
+                    "target_artifact_id": {"type": "string", "description": "UUID if refining existing artifact (optional)"},
+                    "assignee_id": {"type": "string", "description": "UUID of stakeholder"},
+                    "clarification_point_id": {"type": "string", "description": "If resolving a clarification point"}
+                },
+                "required": ["organization_id", "target_artifact_type"]
+            }
+        ),
+        Tool(
+            name="get_elicitation_session",
+            description="Get an elicitation session with full conversation history. "
+                       "\n\nUse this to restore context when resuming a session.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "session_id": {"type": "string", "description": "UUID or human-readable ID (e.g., 'ELIC-001')"}
+                },
+                "required": ["session_id"]
+            }
+        ),
+        Tool(
+            name="add_session_message",
+            description="Add a message to an elicitation session's conversation history. "
+                       "\n\nUse this to record each exchange in the Socratic dialogue.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "session_id": {"type": "string", "description": "Session UUID"},
+                    "role": {"type": "string", "enum": ["user", "assistant", "system"], "description": "Message role"},
+                    "content": {"type": "string", "description": "Message content"},
+                    "metadata": {"type": "object", "description": "Optional metadata"}
+                },
+                "required": ["session_id", "role", "content"]
+            }
+        ),
+
+        # Gap Analyzer (RAAS-COMP-064)
+        Tool(
+            name="analyze_requirement",
+            description="Analyze a requirement for completeness and gaps (RAAS-FEAT-086). "
+                       "\n\nChecks for:"
+                       "\n• Missing required sections"
+                       "\n• Vague language (fast, easy, flexible, etc.)"
+                       "\n• Incomplete information"
+                       "\n\nReturns completeness score (0-100%) and findings by severity.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "requirement_id": {"type": "string", "description": "UUID of the requirement to analyze"},
+                    "include_children": {"type": "boolean", "description": "Also analyze child requirements (default: false)"}
+                },
+                "required": ["requirement_id"]
+            }
+        ),
+        Tool(
+            name="analyze_project",
+            description="Batch analyze all requirements in a project (RAAS-FEAT-088). "
+                       "\n\nProvides project-wide quality metrics and identifies requirements needing attention.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "string", "description": "UUID of the project"},
+                    "requirement_types": {"type": "array", "items": {"type": "string"}, "description": "Filter by types (optional)"},
+                    "statuses": {"type": "array", "items": {"type": "string"}, "description": "Filter by statuses (optional)"}
+                },
+                "required": ["project_id"]
+            }
+        ),
+        Tool(
+            name="analyze_contradictions",
+            description="Detect contradictions between requirements (RAAS-FEAT-087). "
+                       "\n\nAnalyzes an epic or project for conflicting requirements.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "scope_id": {"type": "string", "description": "UUID of epic or project"},
+                    "scope_type": {"type": "string", "enum": ["epic", "project"], "description": "Type of scope (default: epic)"}
+                },
+                "required": ["scope_id"]
+            }
+        ),
     ]

@@ -838,3 +838,294 @@ class TaskEscalationResponse(BaseModel):
     escalated_by_system: bool
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# =============================================================================
+# RAAS-EPIC-026: AI-Driven Requirements Elicitation & Verification
+# =============================================================================
+
+
+class ClarificationPointCreate(BaseModel):
+    """Schema for creating a clarification point."""
+
+    organization_id: UUID
+    project_id: Optional[UUID] = None
+    artifact_type: str  # requirement, guardrail, etc.
+    artifact_id: UUID
+    title: str
+    description: Optional[str] = None
+    context: Optional[str] = None
+    priority: str = "medium"  # blocking, high, medium, low
+    assignee_id: Optional[UUID] = None
+    due_date: Optional[datetime] = None
+
+
+class ClarificationPointUpdate(BaseModel):
+    """Schema for updating a clarification point."""
+
+    title: Optional[str] = None
+    description: Optional[str] = None
+    context: Optional[str] = None
+    priority: Optional[str] = None
+    status: Optional[str] = None
+    assignee_id: Optional[UUID] = None
+    due_date: Optional[datetime] = None
+
+
+class ClarificationPointResolve(BaseModel):
+    """Schema for resolving a clarification point."""
+
+    resolution_content: str
+
+
+class ClarificationPointResponse(BaseModel):
+    """Schema for clarification point response."""
+
+    id: UUID
+    human_readable_id: Optional[str] = None
+    organization_id: UUID
+    project_id: Optional[UUID] = None
+    artifact_type: str
+    artifact_id: UUID
+    title: str
+    description: Optional[str] = None
+    context: Optional[str] = None
+    priority: str
+    status: str
+    assignee_id: Optional[UUID] = None
+    due_date: Optional[datetime] = None
+    resolution_content: Optional[str] = None
+    resolved_at: Optional[datetime] = None
+    resolved_by: Optional[UUID] = None
+    created_by: Optional[UUID] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ClarificationPointListResponse(BaseModel):
+    """Schema for paginated clarification point list."""
+
+    items: List[ClarificationPointResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class QuestionFrameworkCreate(BaseModel):
+    """Schema for creating a question framework."""
+
+    organization_id: UUID
+    project_id: Optional[UUID] = None  # NULL = org-level default
+    name: str
+    description: Optional[str] = None
+    framework_type: str  # epic, component, feature, requirement, guardrail
+    content: dict = {}
+
+
+class QuestionFrameworkUpdate(BaseModel):
+    """Schema for updating a question framework."""
+
+    name: Optional[str] = None
+    description: Optional[str] = None
+    content: Optional[dict] = None
+    is_active: Optional[bool] = None
+
+
+class QuestionFrameworkResponse(BaseModel):
+    """Schema for question framework response."""
+
+    id: UUID
+    organization_id: UUID
+    project_id: Optional[UUID] = None
+    name: str
+    description: Optional[str] = None
+    framework_type: str
+    version: int
+    is_active: bool
+    content: dict
+    created_by: Optional[UUID] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class QuestionFrameworkListResponse(BaseModel):
+    """Schema for paginated question framework list."""
+
+    items: List[QuestionFrameworkResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class ElicitationSessionCreate(BaseModel):
+    """Schema for creating an elicitation session."""
+
+    organization_id: UUID
+    project_id: Optional[UUID] = None
+    target_artifact_type: str  # epic, component, feature, requirement, guardrail
+    target_artifact_id: Optional[UUID] = None  # NULL if creating new
+    assignee_id: Optional[UUID] = None
+    clarification_point_id: Optional[UUID] = None
+    expires_at: Optional[datetime] = None
+
+
+class ElicitationSessionUpdate(BaseModel):
+    """Schema for updating an elicitation session."""
+
+    status: Optional[str] = None
+    conversation_history: Optional[List[dict]] = None
+    partial_draft: Optional[dict] = None
+    identified_gaps: Optional[List[dict]] = None
+    progress: Optional[dict] = None
+    expires_at: Optional[datetime] = None
+
+
+class ElicitationSessionAddMessage(BaseModel):
+    """Schema for adding a message to elicitation session."""
+
+    role: str  # user, assistant, system
+    content: str
+    metadata: Optional[dict] = None
+
+
+class ElicitationSessionResponse(BaseModel):
+    """Schema for elicitation session response."""
+
+    id: UUID
+    human_readable_id: Optional[str] = None
+    organization_id: UUID
+    project_id: Optional[UUID] = None
+    target_artifact_type: str
+    target_artifact_id: Optional[UUID] = None
+    assignee_id: Optional[UUID] = None
+    status: str
+    conversation_history: List[dict]
+    partial_draft: Optional[dict] = None
+    identified_gaps: List[dict]
+    progress: dict
+    clarification_point_id: Optional[UUID] = None
+    started_at: datetime
+    last_activity_at: datetime
+    completed_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    created_by: Optional[UUID] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ElicitationSessionListItem(BaseModel):
+    """Schema for elicitation session list item (lightweight)."""
+
+    id: UUID
+    human_readable_id: Optional[str] = None
+    organization_id: UUID
+    project_id: Optional[UUID] = None
+    target_artifact_type: str
+    target_artifact_id: Optional[UUID] = None
+    assignee_id: Optional[UUID] = None
+    status: str
+    clarification_point_id: Optional[UUID] = None
+    started_at: datetime
+    last_activity_at: datetime
+    message_count: int = 0
+    gap_count: int = 0
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ElicitationSessionListResponse(BaseModel):
+    """Schema for paginated elicitation session list."""
+
+    items: List[ElicitationSessionListItem]
+    total: int
+    page: int
+    page_size: int
+
+
+# =============================================================================
+# Gap Analyzer Schemas (RAAS-COMP-064)
+# =============================================================================
+
+
+class GapAnalysisRequest(BaseModel):
+    """Schema for requesting gap analysis on a requirement."""
+
+    requirement_id: UUID
+    include_children: bool = False
+
+
+class GapFinding(BaseModel):
+    """Schema for a single gap finding."""
+
+    section: str  # Which section has the gap
+    issue_type: str  # vague_language, missing_section, contradiction, incomplete
+    severity: str  # critical, high, medium, low
+    description: str
+    suggestion: Optional[str] = None
+    evidence: Optional[str] = None  # The specific text that triggered the finding
+
+
+class GapAnalysisResponse(BaseModel):
+    """Schema for gap analysis response."""
+
+    requirement_id: UUID
+    requirement_title: str
+    completeness_score: float  # 0.0 to 1.0
+    findings: List[GapFinding]
+    sections_analyzed: List[str]
+    analysis_timestamp: datetime
+
+
+class BatchGapAnalysisRequest(BaseModel):
+    """Schema for batch gap analysis of a project."""
+
+    project_id: UUID
+    requirement_types: Optional[List[str]] = None  # Filter by type
+    statuses: Optional[List[str]] = None  # Filter by status
+
+
+class BatchGapAnalysisResponse(BaseModel):
+    """Schema for batch gap analysis response."""
+
+    project_id: UUID
+    total_requirements: int
+    requirements_analyzed: int
+    overall_completeness_score: float
+    findings_by_severity: dict  # {critical: N, high: N, ...}
+    requirements_with_issues: List[dict]  # [{id, title, score, critical_count}, ...]
+
+
+class ContradictionFinding(BaseModel):
+    """Schema for a contradiction between requirements."""
+
+    requirement_a_id: UUID
+    requirement_a_title: str
+    requirement_b_id: UUID
+    requirement_b_title: str
+    contradiction_type: str  # direct, implicit, scope
+    description: str
+    evidence_a: str
+    evidence_b: str
+    severity: str
+
+
+class ContradictionAnalysisResponse(BaseModel):
+    """Schema for contradiction analysis response."""
+
+    scope_id: UUID  # Project or epic ID
+    scope_type: str  # project, epic
+    contradictions: List[ContradictionFinding]
+    analysis_timestamp: datetime
+
+
+class QualityMetricsResponse(BaseModel):
+    """Schema for quality metrics over time."""
+
+    project_id: UUID
+    time_period: str  # weekly, monthly
+    metrics: List[dict]  # [{date, completeness_avg, gap_count, ...}, ...]
+    trend: str  # improving, stable, declining

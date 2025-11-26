@@ -157,6 +157,18 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent | ImageConten
                 "assign_task": handlers.handle_assign_task,
                 "complete_task": handlers.handle_complete_task,
                 "get_my_tasks": handlers.handle_get_my_tasks,
+                # Elicitation handlers (RAAS-EPIC-026)
+                "create_clarification_point": handlers.handle_create_clarification_point,
+                "list_clarification_points": handlers.handle_list_clarification_points,
+                "get_my_clarifications": handlers.handle_get_my_clarifications,
+                "get_clarification_point": handlers.handle_get_clarification_point,
+                "resolve_clarification_point": handlers.handle_resolve_clarification_point,
+                "create_elicitation_session": handlers.handle_create_elicitation_session,
+                "get_elicitation_session": handlers.handle_get_elicitation_session,
+                "add_session_message": handlers.handle_add_session_message,
+                "analyze_requirement": handlers.handle_analyze_requirement,
+                "analyze_project": handlers.handle_analyze_project,
+                "analyze_contradictions": handlers.handle_analyze_contradictions,
             }
 
             # Look up and execute handler

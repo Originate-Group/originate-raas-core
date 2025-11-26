@@ -1547,3 +1547,319 @@ async def handle_get_my_tasks(
                 )
 
     return [TextContent(type="text", text="\n".join(text_parts))], current_scope
+
+
+# =============================================================================
+# RAAS-EPIC-026: Elicitation Handlers
+# =============================================================================
+
+
+def format_clarification(c: dict) -> str:
+    """Format a clarification point for display."""
+    lines = [
+        f"**{c['human_readable_id']}**: {c['title']}",
+        f"  Status: {c['status']} | Priority: {c['priority']}",
+        f"  Artifact: {c['artifact_type']} ({c['artifact_id'][:8]}...)",
+    ]
+    if c.get('assignee_id'):
+        lines.append(f"  Assigned to: {c['assignee_id'][:8]}...")
+    if c.get('due_date'):
+        lines.append(f"  Due: {c['due_date'][:10]}")
+    if c.get('description'):
+        lines.append(f"  Description: {c['description'][:100]}...")
+    return "\n".join(lines)
+
+
+async def handle_create_clarification_point(
+    arguments: dict,
+    client: httpx.AsyncClient,
+    current_scope: Optional[dict] = None
+) -> tuple[list[TextContent], Optional[dict]]:
+    """Create a new clarification point."""
+    response = await client.post("/elicitation/clarifications", json=arguments)
+    response.raise_for_status()
+    result = response.json()
+    logger.info(f"Created clarification point {result['human_readable_id']}")
+
+    text = f"Created clarification point: {result['human_readable_id']}\n\n{format_clarification(result)}"
+    return [TextContent(type="text", text=text)], current_scope
+
+
+async def handle_list_clarification_points(
+    arguments: dict,
+    client: httpx.AsyncClient,
+    current_scope: Optional[dict] = None
+) -> tuple[list[TextContent], Optional[dict]]:
+    """List clarification points with filtering."""
+    params = {k: v for k, v in arguments.items() if v is not None}
+    response = await client.get("/elicitation/clarifications", params=params)
+    response.raise_for_status()
+    result = response.json()
+
+    items = result.get('items', [])
+    total = result.get('total', 0)
+
+    if not items:
+        return [TextContent(type="text", text="No clarification points found matching filters.")], current_scope
+
+    text_parts = [f"Clarification Points ({total} total):\n"]
+    for c in items:
+        text_parts.append(format_clarification(c))
+        text_parts.append("")
+
+    return [TextContent(type="text", text="\n".join(text_parts))], current_scope
+
+
+async def handle_get_my_clarifications(
+    arguments: dict,
+    client: httpx.AsyncClient,
+    current_scope: Optional[dict] = None
+) -> tuple[list[TextContent], Optional[dict]]:
+    """Get clarification points assigned to current user ('What needs my input?')."""
+    params = {}
+    if arguments.get('include_resolved'):
+        params['include_resolved'] = 'true'
+
+    response = await client.get("/elicitation/clarifications/mine", params=params)
+    response.raise_for_status()
+    result = response.json()
+
+    items = result.get('items', [])
+    if not items:
+        return [TextContent(type="text", text="No clarification points need your input.")], current_scope
+
+    text_parts = ["**What Needs Your Input?**\n"]
+
+    # Group by priority
+    by_priority = {'blocking': [], 'high': [], 'medium': [], 'low': []}
+    for c in items:
+        by_priority[c['priority']].append(c)
+
+    for priority in ['blocking', 'high', 'medium', 'low']:
+        if by_priority[priority]:
+            text_parts.append(f"\n**{priority.upper()}**")
+            for c in by_priority[priority]:
+                due = f" (due: {c['due_date'][:10]})" if c.get('due_date') else ""
+                text_parts.append(f"  • {c['human_readable_id']}: {c['title']}{due}")
+
+    return [TextContent(type="text", text="\n".join(text_parts))], current_scope
+
+
+async def handle_get_clarification_point(
+    arguments: dict,
+    client: httpx.AsyncClient,
+    current_scope: Optional[dict] = None
+) -> tuple[list[TextContent], Optional[dict]]:
+    """Get a clarification point by ID."""
+    clarification_id = arguments["clarification_id"]
+    response = await client.get(f"/elicitation/clarifications/{clarification_id}")
+    response.raise_for_status()
+    result = response.json()
+
+    text = f"Clarification Point Details:\n\n{format_clarification(result)}"
+    if result.get('context'):
+        text += f"\n\nContext: {result['context']}"
+    if result.get('resolution_content'):
+        text += f"\n\nResolution: {result['resolution_content']}"
+
+    return [TextContent(type="text", text=text)], current_scope
+
+
+async def handle_resolve_clarification_point(
+    arguments: dict,
+    client: httpx.AsyncClient,
+    current_scope: Optional[dict] = None
+) -> tuple[list[TextContent], Optional[dict]]:
+    """Resolve a clarification point with an answer."""
+    clarification_id = arguments.pop("clarification_id")
+    response = await client.post(
+        f"/elicitation/clarifications/{clarification_id}/resolve",
+        json=arguments
+    )
+    response.raise_for_status()
+    result = response.json()
+    logger.info(f"Resolved clarification point {result['human_readable_id']}")
+
+    text = f"Resolved: {result['human_readable_id']}\n\nResolution: {result['resolution_content']}"
+    return [TextContent(type="text", text=text)], current_scope
+
+
+async def handle_create_elicitation_session(
+    arguments: dict,
+    client: httpx.AsyncClient,
+    current_scope: Optional[dict] = None
+) -> tuple[list[TextContent], Optional[dict]]:
+    """Create a new elicitation session."""
+    response = await client.post("/elicitation/sessions", json=arguments)
+    response.raise_for_status()
+    result = response.json()
+    logger.info(f"Created elicitation session {result['human_readable_id']}")
+
+    text = (
+        f"Created elicitation session: {result['human_readable_id']}\n"
+        f"Target: {result['target_artifact_type']}\n"
+        f"Status: {result['status']}"
+    )
+    return [TextContent(type="text", text=text)], current_scope
+
+
+async def handle_get_elicitation_session(
+    arguments: dict,
+    client: httpx.AsyncClient,
+    current_scope: Optional[dict] = None
+) -> tuple[list[TextContent], Optional[dict]]:
+    """Get elicitation session with full conversation history."""
+    session_id = arguments["session_id"]
+    response = await client.get(f"/elicitation/sessions/{session_id}")
+    response.raise_for_status()
+    result = response.json()
+
+    text_parts = [
+        f"**Session: {result['human_readable_id']}**",
+        f"Target: {result['target_artifact_type']}",
+        f"Status: {result['status']}",
+        f"Messages: {len(result.get('conversation_history', []))}",
+        f"Gaps Identified: {len(result.get('identified_gaps', []))}",
+        "",
+        "**Conversation History:**"
+    ]
+
+    for msg in result.get('conversation_history', []):
+        role = msg.get('role', 'unknown').upper()
+        content = msg.get('content', '')[:200]
+        text_parts.append(f"\n[{role}]: {content}...")
+
+    if result.get('identified_gaps'):
+        text_parts.append("\n**Identified Gaps:**")
+        for gap in result['identified_gaps']:
+            text_parts.append(f"  • {gap.get('description', 'Unknown gap')}")
+
+    return [TextContent(type="text", text="\n".join(text_parts))], current_scope
+
+
+async def handle_add_session_message(
+    arguments: dict,
+    client: httpx.AsyncClient,
+    current_scope: Optional[dict] = None
+) -> tuple[list[TextContent], Optional[dict]]:
+    """Add a message to elicitation session conversation."""
+    session_id = arguments.pop("session_id")
+    response = await client.post(
+        f"/elicitation/sessions/{session_id}/messages",
+        json=arguments
+    )
+    response.raise_for_status()
+    result = response.json()
+
+    text = (
+        f"Message added to session {result['human_readable_id']}\n"
+        f"Total messages: {len(result.get('conversation_history', []))}"
+    )
+    return [TextContent(type="text", text=text)], current_scope
+
+
+async def handle_analyze_requirement(
+    arguments: dict,
+    client: httpx.AsyncClient,
+    current_scope: Optional[dict] = None
+) -> tuple[list[TextContent], Optional[dict]]:
+    """Analyze a requirement for completeness and gaps."""
+    response = await client.post("/elicitation/analyze/requirement", json=arguments)
+    response.raise_for_status()
+    result = response.json()
+
+    text_parts = [
+        f"**Gap Analysis: {result['requirement_title']}**",
+        f"Completeness Score: {result['completeness_score']:.0%}",
+        ""
+    ]
+
+    findings = result.get('findings', [])
+    if not findings:
+        text_parts.append("No issues found - requirement is well-defined!")
+    else:
+        # Group by severity
+        by_severity = {'critical': [], 'high': [], 'medium': [], 'low': []}
+        for f in findings:
+            by_severity[f['severity']].append(f)
+
+        for severity in ['critical', 'high', 'medium', 'low']:
+            if by_severity[severity]:
+                text_parts.append(f"\n**{severity.upper()} ({len(by_severity[severity])})**")
+                for f in by_severity[severity]:
+                    text_parts.append(f"  • [{f['issue_type']}] {f['description']}")
+                    if f.get('suggestion'):
+                        text_parts.append(f"    Suggestion: {f['suggestion']}")
+
+    return [TextContent(type="text", text="\n".join(text_parts))], current_scope
+
+
+async def handle_analyze_project(
+    arguments: dict,
+    client: httpx.AsyncClient,
+    current_scope: Optional[dict] = None
+) -> tuple[list[TextContent], Optional[dict]]:
+    """Batch analyze all requirements in a project."""
+    response = await client.post("/elicitation/analyze/project", json=arguments)
+    response.raise_for_status()
+    result = response.json()
+
+    text_parts = [
+        f"**Project Gap Analysis**",
+        f"Requirements Analyzed: {result['requirements_analyzed']}/{result['total_requirements']}",
+        f"Overall Completeness: {result['overall_completeness_score']:.0%}",
+        "",
+        "**Findings by Severity:**"
+    ]
+
+    for severity, count in result['findings_by_severity'].items():
+        if count > 0:
+            text_parts.append(f"  • {severity}: {count}")
+
+    if result.get('requirements_with_issues'):
+        text_parts.append("\n**Top Requirements with Issues:**")
+        for req in result['requirements_with_issues'][:10]:
+            text_parts.append(
+                f"  • {req['human_readable_id']}: {req['title']} "
+                f"(score: {req['score']:.0%}, critical: {req['critical_count']})"
+            )
+
+    return [TextContent(type="text", text="\n".join(text_parts))], current_scope
+
+
+async def handle_analyze_contradictions(
+    arguments: dict,
+    client: httpx.AsyncClient,
+    current_scope: Optional[dict] = None
+) -> tuple[list[TextContent], Optional[dict]]:
+    """Detect contradictions between requirements."""
+    params = {
+        'scope_id': arguments['scope_id'],
+        'scope_type': arguments.get('scope_type', 'epic')
+    }
+    response = await client.post("/elicitation/analyze/contradictions", params=params)
+    response.raise_for_status()
+    result = response.json()
+
+    contradictions = result.get('contradictions', [])
+    if not contradictions:
+        return [TextContent(
+            type="text",
+            text=f"No contradictions detected in {result['scope_type']} scope."
+        )], current_scope
+
+    text_parts = [
+        f"**Contradiction Analysis ({result['scope_type']})**",
+        f"Found {len(contradictions)} potential contradiction(s):",
+        ""
+    ]
+
+    for c in contradictions:
+        text_parts.append(
+            f"• **{c['requirement_a_title']}** vs **{c['requirement_b_title']}**"
+        )
+        text_parts.append(f"  Type: {c['contradiction_type']} | Severity: {c['severity']}")
+        text_parts.append(f"  {c['description']}")
+        text_parts.append("")
+
+    return [TextContent(type="text", text="\n".join(text_parts))], current_scope

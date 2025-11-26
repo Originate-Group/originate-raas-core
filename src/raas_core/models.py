@@ -1005,3 +1005,198 @@ class TaskEscalation(Base):
 
     def __repr__(self) -> str:
         return f"<TaskEscalation {self.task_id}: {self.reason}>"
+
+
+# =============================================================================
+# RAAS-EPIC-026: AI-Driven Requirements Elicitation & Verification
+# =============================================================================
+
+class ClarificationPriority(str, enum.Enum):
+    """Priority levels for clarification points."""
+    BLOCKING = "blocking"
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+
+class ClarificationStatus(str, enum.Enum):
+    """Status of a clarification point."""
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    RESOLVED = "resolved"
+    DEFERRED = "deferred"
+
+
+class ClarificationPoint(Base):
+    """
+    Clarification Point for tracking questions/gaps requiring stakeholder input.
+    RAAS-COMP-060: Clarification Points Management
+    """
+    __tablename__ = "clarification_points"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    human_readable_id = Column(String(20), unique=True, nullable=True)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+                             nullable=False, index=True)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"),
+                        nullable=True, index=True)
+
+    # Link to source artifact
+    artifact_type = Column(String(50), nullable=False)  # requirement, guardrail, etc.
+    artifact_id = Column(UUID(as_uuid=True), nullable=False)
+
+    # Clarification details
+    title = Column(String(200), nullable=False)
+    description = Column(Text, nullable=True)
+    context = Column(Text, nullable=True)  # Why this clarification is needed
+
+    # Priority and status
+    priority = Column(
+        Enum(ClarificationPriority, name="clarificationpriority", create_type=False),
+        nullable=False, default=ClarificationPriority.MEDIUM
+    )
+    status = Column(
+        Enum(ClarificationStatus, name="clarificationstatus", create_type=False),
+        nullable=False, default=ClarificationStatus.PENDING
+    )
+
+    # Assignment
+    assignee_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"),
+                         nullable=True, index=True)
+    due_date = Column(DateTime(timezone=True), nullable=True)
+
+    # Resolution
+    resolution_content = Column(Text, nullable=True)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+    resolved_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"),
+                         nullable=True)
+
+    # Audit
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"),
+                        nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=text("now()"), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=text("now()"), nullable=False)
+
+    # Relationships
+    organization = relationship("Organization")
+    project = relationship("Project")
+    assignee = relationship("User", foreign_keys=[assignee_id])
+    resolver = relationship("User", foreign_keys=[resolved_by])
+    creator = relationship("User", foreign_keys=[created_by])
+
+    def __repr__(self) -> str:
+        return f"<ClarificationPoint {self.human_readable_id}: {self.title}>"
+
+
+class QuestionFramework(Base):
+    """
+    Question Framework for storing Socratic questioning patterns.
+    RAAS-COMP-062: Question Framework Repository
+    """
+    __tablename__ = "question_frameworks"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+                             nullable=False, index=True)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"),
+                        nullable=True, index=True)  # NULL = org-level default
+
+    name = Column(String(200), nullable=False)
+    description = Column(Text, nullable=True)
+    framework_type = Column(String(50), nullable=False)  # epic, component, feature, requirement, guardrail
+
+    # Version control
+    version = Column(Integer, nullable=False, default=1)
+    is_active = Column(Boolean, nullable=False, default=True)
+
+    # Framework content (JSONB)
+    # Structure: {
+    #   "question_sequences": [...],
+    #   "vagueness_patterns": [...],
+    #   "completeness_criteria": {...},
+    #   "contradiction_patterns": [...]
+    # }
+    content = Column(JSONB, nullable=False, default=dict)
+
+    # Audit
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"),
+                        nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=text("now()"), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=text("now()"), nullable=False)
+
+    # Relationships
+    organization = relationship("Organization")
+    project = relationship("Project")
+    creator = relationship("User")
+
+    def __repr__(self) -> str:
+        return f"<QuestionFramework {self.name} ({self.framework_type})>"
+
+
+class ElicitationSessionStatus(str, enum.Enum):
+    """Status of an elicitation session."""
+    ACTIVE = "active"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+    EXPIRED = "expired"
+    ARCHIVED = "archived"
+
+
+class ElicitationSession(Base):
+    """
+    Elicitation Session for managing multi-session conversations.
+    RAAS-COMP-063: Elicitation Session Management
+    """
+    __tablename__ = "elicitation_sessions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    human_readable_id = Column(String(20), unique=True, nullable=True)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+                             nullable=False, index=True)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"),
+                        nullable=True, index=True)
+
+    # Target artifact
+    target_artifact_type = Column(String(50), nullable=False)  # epic, component, feature, requirement, guardrail
+    target_artifact_id = Column(UUID(as_uuid=True), nullable=True)  # NULL if creating new
+
+    # Session owner
+    assignee_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"),
+                         nullable=True, index=True)
+
+    # Status
+    status = Column(
+        Enum(ElicitationSessionStatus, name="elicitationsessionstatus", create_type=False),
+        nullable=False, default=ElicitationSessionStatus.ACTIVE
+    )
+
+    # Session state (JSONB)
+    conversation_history = Column(JSONB, nullable=False, default=list)
+    partial_draft = Column(JSONB, nullable=True)
+    identified_gaps = Column(JSONB, nullable=False, default=list)
+    progress = Column(JSONB, nullable=False, default=dict)
+
+    # Link to clarification point being resolved
+    clarification_point_id = Column(UUID(as_uuid=True),
+                                    ForeignKey("clarification_points.id", ondelete="SET NULL"),
+                                    nullable=True)
+
+    # Timestamps
+    started_at = Column(DateTime(timezone=True), server_default=text("now()"), nullable=False)
+    last_activity_at = Column(DateTime(timezone=True), server_default=text("now()"), nullable=False)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Audit
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"),
+                        nullable=True)
+
+    # Relationships
+    organization = relationship("Organization")
+    project = relationship("Project")
+    assignee = relationship("User", foreign_keys=[assignee_id])
+    creator = relationship("User", foreign_keys=[created_by])
+    clarification_point = relationship("ClarificationPoint")
+
+    def __repr__(self) -> str:
+        return f"<ElicitationSession {self.human_readable_id}: {self.target_artifact_type}>"
