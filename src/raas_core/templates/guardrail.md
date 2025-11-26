@@ -1,7 +1,7 @@
 ---
 type: guardrail
 title: "[Descriptive Guardrail Title]"
-category: security  # security, architecture
+category: security  # security, architecture, business
 enforcement_level: recommended  # advisory, recommended, mandatory
 applies_to: [epic, component, feature, requirement]  # Which requirement types this applies to
 # NOTE: status defaults to "draft" on creation; id and timestamps are system-managed

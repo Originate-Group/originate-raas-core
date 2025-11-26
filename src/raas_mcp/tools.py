@@ -1167,7 +1167,7 @@ def get_tools() -> list[Tool]:
                        "\n\nGUARDRAILS ARE:"
                        "\n• Organization-scoped (not project-scoped)"
                        "\n• Standards that guide requirement authoring across all projects"
-                       "\n• Categorized (MVP: security, architecture)"
+                       "\n• Categorized (security, architecture, business)"
                        "\n• Have enforcement levels (advisory, recommended, mandatory)"
                        "\n• Specify which requirement types they apply to"
                        "\n\nRETURNS: Created guardrail object with generated UUID and human-readable ID (e.g., GUARD-SEC-001)"
@@ -1175,7 +1175,7 @@ def get_tools() -> list[Tool]:
                        "\n• MUST call get_guardrail_template() first to get proper format"
                        "\n\nERRORS:"
                        "\n• 400: Invalid markdown format (missing required frontmatter)"
-                       "\n• 400: Invalid category (must be 'security' or 'architecture' for MVP)"
+                       "\n• 400: Invalid category (must be 'security', 'architecture', or 'business')"
                        "\n• 403: Forbidden (user must be org admin or owner to create guardrails)",
             inputSchema={
                 "type": "object",
@@ -1251,7 +1251,7 @@ def get_tools() -> list[Tool]:
             description="List and filter organizational guardrails with pagination and search. "
                        "\n\nFILTERS:"
                        "\n• organization_id: Filter by organization UUID"
-                       "\n• category: Filter by category (security, architecture)"
+                       "\n• category: Filter by category (security, architecture, business)"
                        "\n• enforcement_level: Filter by level (advisory, recommended, mandatory)"
                        "\n• applies_to: Filter by requirement type (epic, component, feature, requirement)"
                        "\n• status: Filter by status (defaults to 'active' only, use 'all' for all statuses)"
@@ -1274,7 +1274,7 @@ def get_tools() -> list[Tool]:
                     },
                     "category": {
                         "type": "string",
-                        "enum": ["security", "architecture"],
+                        "enum": ["security", "architecture", "business"],
                         "description": "Filter by category (optional)"
                     },
                     "enforcement_level": {

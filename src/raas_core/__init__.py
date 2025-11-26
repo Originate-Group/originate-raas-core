@@ -51,6 +51,8 @@ from .crud import (
     get_user_by_id,
     get_user_by_email,
     search_users,
+    list_users,
+    users_share_organization,
 )
 from .schemas import (
     # Requirement schemas
@@ -125,6 +127,8 @@ __all__ = [
     "get_user_by_id",
     "get_user_by_email",
     "search_users",
+    "list_users",
+    "users_share_organization",
     # Schemas
     "RequirementCreate",
     "RequirementUpdate",

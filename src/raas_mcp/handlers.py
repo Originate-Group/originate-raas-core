@@ -1120,7 +1120,7 @@ async def handle_create_guardrail(
     GUARDRAILS ARE:
     • Organization-scoped (not project-scoped)
     • Standards that guide requirement authoring across all projects
-    • Categorized (MVP: security, architecture)
+    • Categorized (security, architecture, business)
     • Have enforcement levels (advisory, recommended, mandatory)
     • Specify which requirement types they apply to
     """
@@ -1211,7 +1211,7 @@ async def handle_list_guardrails(
 
     FILTERS:
     • organization_id: Filter by organization UUID
-    • category: Filter by category (security, architecture)
+    • category: Filter by category (security, architecture, business)
     • enforcement_level: Filter by level (advisory, recommended, mandatory)
     • applies_to: Filter by requirement type (epic, component, feature, requirement)
     • status: Filter by status (defaults to 'active' only, use 'all' for all statuses)

@@ -1,17 +1,37 @@
-"""API endpoints for guardrail management (solo mode - no authentication)."""
+"""API endpoints for guardrail management with RBAC permission checks."""
 import logging
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Request
 from sqlalchemy.orm import Session
 from math import ceil
 
-from raas_core import crud, schemas
+from raas_core import crud, schemas, models
+from raas_core.permissions import (
+    check_org_permission,
+    PermissionDeniedError,
+)
 
 from ..database import get_db
+from ..dependencies import get_current_user_optional
 
 logger = logging.getLogger("raas-core.guardrails")
+
+
+def _handle_permission_error(e: PermissionDeniedError) -> HTTPException:
+    """Convert PermissionDeniedError to HTTPException with proper 403 response."""
+    return HTTPException(
+        status_code=403,
+        detail={
+            "error": "permission_denied",
+            "message": e.message,
+            "required_role": e.required_role,
+            "current_role": e.current_role,
+            "resource_type": e.resource_type,
+        }
+    )
+
 
 router = APIRouter(tags=["guardrails"])
 
@@ -32,9 +52,12 @@ async def get_guardrail_template():
 async def create_guardrail(
     guardrail: schemas.GuardrailCreate,
     db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_current_user_optional),
 ):
     """
     Create a new guardrail with structured markdown content.
+
+    Requires Admin or Owner role in the organization.
 
     The content field must contain properly formatted markdown with
     YAML frontmatter. Use GET /guardrails/template to obtain the template.
@@ -42,12 +65,22 @@ async def create_guardrail(
     Guardrails are organization-scoped and codify standards that guide
     requirement authoring across all projects.
     """
+    # In team mode, verify user has admin or owner role in the organization
+    if current_user:
+        try:
+            check_org_permission(
+                db, current_user.id, guardrail.organization_id,
+                models.MemberRole.ADMIN, "create guardrails"
+            )
+        except PermissionDeniedError as e:
+            raise _handle_permission_error(e)
+
     try:
         db_guardrail = crud.create_guardrail(
             db=db,
             organization_id=guardrail.organization_id,
             content=guardrail.content,
-            user_id=None,  # Solo mode - no user
+            user_id=current_user.id if current_user else None,
         )
         logger.info(f"Created guardrail {db_guardrail.human_readable_id}")
         return db_guardrail
@@ -63,9 +96,12 @@ async def create_guardrail(
 async def get_guardrail(
     guardrail_id: str,
     db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_current_user_optional),
 ):
     """
     Get a guardrail by UUID or human-readable ID.
+
+    Requires membership in the guardrail's organization.
 
     Supports both UUID (e.g., 'a1b2c3d4-...') and human-readable ID
     (e.g., 'GUARD-SEC-001', case-insensitive).
@@ -79,6 +115,16 @@ async def get_guardrail(
             detail=f"Guardrail not found: {guardrail_id}",
         )
 
+    # In team mode, verify user is a member of the organization
+    if current_user:
+        try:
+            check_org_permission(
+                db, current_user.id, guardrail.organization_id,
+                models.MemberRole.VIEWER, "view guardrail"
+            )
+        except PermissionDeniedError as e:
+            raise _handle_permission_error(e)
+
     return guardrail
 
 
@@ -87,9 +133,12 @@ async def update_guardrail(
     guardrail_id: str,
     guardrail_update: schemas.GuardrailUpdate,
     db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_current_user_optional),
 ):
     """
     Update a guardrail with new markdown content.
+
+    Requires Admin or Owner role in the organization.
 
     The content field must contain properly formatted markdown with
     YAML frontmatter. All fields in the frontmatter can be updated.
@@ -102,12 +151,22 @@ async def update_guardrail(
             detail=f"Guardrail not found: {guardrail_id}",
         )
 
+    # In team mode, verify user has admin or owner role in the organization
+    if current_user:
+        try:
+            check_org_permission(
+                db, current_user.id, existing.organization_id,
+                models.MemberRole.ADMIN, "update guardrails"
+            )
+        except PermissionDeniedError as e:
+            raise _handle_permission_error(e)
+
     try:
         updated_guardrail = crud.update_guardrail(
             db=db,
             guardrail_id=str(existing.id),
             content=guardrail_update.content,
-            user_id=None,  # Solo mode - no user
+            user_id=current_user.id if current_user else None,
         )
         logger.info(f"Updated guardrail {updated_guardrail.human_readable_id}")
         return updated_guardrail
@@ -123,15 +182,36 @@ async def update_guardrail(
 async def delete_guardrail(
     guardrail_id: str,
     db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_current_user_optional),
 ):
     """
     Delete a guardrail by UUID or human-readable ID.
+
+    Requires Admin or Owner role in the organization.
 
     Supports both UUID (e.g., 'a1b2c3d4-...') and human-readable ID
     (e.g., 'GUARD-SEC-001', case-insensitive).
 
     Returns 204 No Content on success, 404 if not found.
     """
+    # Verify guardrail exists first to get organization_id for permission check
+    existing = crud.get_guardrail(db, guardrail_id)
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Guardrail not found: {guardrail_id}",
+        )
+
+    # In team mode, verify user has admin or owner role in the organization
+    if current_user:
+        try:
+            check_org_permission(
+                db, current_user.id, existing.organization_id,
+                models.MemberRole.ADMIN, "delete guardrails"
+            )
+        except PermissionDeniedError as e:
+            raise _handle_permission_error(e)
+
     success = crud.delete_guardrail(db, guardrail_id)
     if not success:
         raise HTTPException(
@@ -146,20 +226,23 @@ async def list_guardrails(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(50, ge=1, le=100, description="Items per page"),
     organization_id: Optional[UUID] = Query(None, description="Filter by organization"),
-    category: Optional[str] = Query(None, description="Filter by category (security, architecture)"),
+    category: Optional[str] = Query(None, description="Filter by category (security, architecture, business)"),
     enforcement_level: Optional[str] = Query(None, description="Filter by enforcement level"),
     applies_to: Optional[str] = Query(None, description="Filter by requirement type applicability"),
     status: Optional[str] = Query("active", description="Filter by status (active, draft, deprecated, all)"),
     search: Optional[str] = Query(None, description="Search in title and content"),
     db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_current_user_optional),
 ):
     """
     List and filter guardrails with pagination.
 
+    In team mode, returns only guardrails from organizations where the user is a member.
+
     By default, returns only active guardrails. Use status='all' to see all.
 
     - **organization_id**: Filter by organization UUID
-    - **category**: Filter by category (security, architecture)
+    - **category**: Filter by category (security, architecture, business)
     - **enforcement_level**: Filter by level (advisory, recommended, mandatory)
     - **applies_to**: Filter by requirement type (epic, component, feature, requirement)
     - **status**: Filter by status (defaults to 'active')
@@ -180,6 +263,7 @@ async def list_guardrails(
         applies_to=applies_to,
         status=status_filter,
         search=search,
+        user_id=current_user.id if current_user else None,
     )
 
     total_pages = ceil(total / page_size) if total > 0 else 0

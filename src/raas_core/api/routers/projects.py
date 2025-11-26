@@ -1,16 +1,38 @@
-"""Projects API endpoints (solo mode - no authentication)."""
+"""Projects API endpoints with RBAC permission checks."""
 import logging
 from typing import Optional
 from uuid import UUID
 from math import ceil
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from raas_core import crud, schemas, models
+from raas_core.permissions import (
+    check_org_permission,
+    check_project_permission,
+    PermissionDeniedError,
+    get_user_org_role,
+)
 
 from ..database import get_db
+from ..dependencies import get_current_user_optional
 
 logger = logging.getLogger("raas-core.projects")
+
+
+def _handle_permission_error(e: PermissionDeniedError) -> HTTPException:
+    """Convert PermissionDeniedError to HTTPException with proper 403 response."""
+    return HTTPException(
+        status_code=403,
+        detail={
+            "error": "permission_denied",
+            "message": e.message,
+            "required_role": e.required_role,
+            "current_role": e.current_role,
+            "resource_type": e.resource_type,
+        }
+    )
+
 
 router = APIRouter(tags=["projects"])
 
@@ -19,9 +41,12 @@ router = APIRouter(tags=["projects"])
 def create_project(
     project: schemas.ProjectCreate,
     db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_current_user_optional),
 ):
     """
     Create a new project.
+
+    Requires Member role or higher in the organization.
 
     - **organization_id**: Parent organization UUID
     - **name**: Project name (outcome-focused, e.g., "Customer Self-Service Portal")
@@ -30,6 +55,16 @@ def create_project(
     - **visibility**: Project visibility (public or private, default: public)
     - **status**: Project status (default: active)
     """
+    # In team mode, verify user is a member of the organization
+    if current_user:
+        try:
+            check_org_permission(
+                db, current_user.id, project.organization_id,
+                models.MemberRole.MEMBER, "create projects"
+            )
+        except PermissionDeniedError as e:
+            raise _handle_permission_error(e)
+
     # Check if slug already exists within this organization
     existing = crud.get_project_by_slug(db, project.organization_id, project.slug)
     if existing:
@@ -51,7 +86,7 @@ def create_project(
             project_type=project.project_type,
             tags=project.tags,
             settings=project.settings,
-            user_id=None,  # Solo mode - no user
+            user_id=current_user.id if current_user else None,
         )
         logger.info(f"Created project '{result.name}' ({result.slug}) (ID: {result.id})")
         return result
@@ -69,9 +104,12 @@ def list_projects(
     visibility: Optional[models.ProjectVisibility] = Query(None, description="Filter by visibility"),
     search: Optional[str] = Query(None, description="Search in name and description"),
     db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_current_user_optional),
 ):
     """
     List projects with optional filtering and pagination.
+
+    In team mode, only returns projects from organizations where user is a member.
 
     - **page**: Page number (starts at 1)
     - **page_size**: Number of items per page (1-100)
@@ -82,7 +120,7 @@ def list_projects(
     """
     skip = (page - 1) * page_size
 
-    # Get all projects (no user filtering in solo mode)
+    # Get projects filtered by user's organization membership in team mode
     projects, total = crud.get_projects(
         db=db,
         skip=skip,
@@ -91,6 +129,7 @@ def list_projects(
         status_filter=status,
         visibility_filter=visibility,
         search=search,
+        user_id=current_user.id if current_user else None,
     )
 
     return schemas.ProjectListResponse(
@@ -106,13 +145,26 @@ def list_projects(
 def get_project(
     project_id: UUID,
     db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_current_user_optional),
 ):
     """
     Get a specific project by ID.
+
+    Requires membership in the project's organization.
     """
     project = crud.get_project(db, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+
+    # In team mode, verify user is a member of the organization
+    if current_user:
+        try:
+            check_org_permission(
+                db, current_user.id, project.organization_id,
+                models.MemberRole.VIEWER, "view project"
+            )
+        except PermissionDeniedError as e:
+            raise _handle_permission_error(e)
 
     return project
 
@@ -122,9 +174,12 @@ def update_project(
     project_id: UUID,
     project_update: schemas.ProjectUpdate,
     db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_current_user_optional),
 ):
     """
     Update a project.
+
+    Requires Project Admin role or Organization Admin/Owner role.
 
     - **name**: New project name (optional)
     - **description**: New description (optional)
@@ -136,6 +191,16 @@ def update_project(
     existing = crud.get_project(db, project_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Project not found")
+
+    # In team mode, verify user has project admin or org admin/owner role
+    if current_user:
+        try:
+            check_project_permission(
+                db, current_user.id, project_id,
+                models.ProjectRole.ADMIN, "update project settings"
+            )
+        except PermissionDeniedError as e:
+            raise _handle_permission_error(e)
 
     try:
         project = crud.update_project(
@@ -161,9 +226,12 @@ def update_project(
 def delete_project(
     project_id: UUID,
     db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_current_user_optional),
 ):
     """
     Delete a project and all its requirements (cascading delete).
+
+    Requires Project Admin role or Organization Admin/Owner role.
 
     Use with caution!
     """
@@ -171,6 +239,16 @@ def delete_project(
     existing = crud.get_project(db, project_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Project not found")
+
+    # In team mode, verify user has project admin or org admin/owner role
+    if current_user:
+        try:
+            check_project_permission(
+                db, current_user.id, project_id,
+                models.ProjectRole.ADMIN, "delete project"
+            )
+        except PermissionDeniedError as e:
+            raise _handle_permission_error(e)
 
     success = crud.delete_project(db, project_id)
     if not success:
@@ -183,14 +261,27 @@ def delete_project(
 def list_project_members(
     project_id: UUID,
     db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_current_user_optional),
 ):
     """
     List all members of a project.
+
+    Requires membership in the project's organization.
     """
     # Check project exists
     project = crud.get_project(db, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+
+    # In team mode, verify user is a member of the organization
+    if current_user:
+        try:
+            check_org_permission(
+                db, current_user.id, project.organization_id,
+                models.MemberRole.VIEWER, "view project members"
+            )
+        except PermissionDeniedError as e:
+            raise _handle_permission_error(e)
 
     return crud.get_project_members(db, project_id)
 
@@ -200,9 +291,12 @@ def add_project_member(
     project_id: UUID,
     member: schemas.ProjectMemberCreate,
     db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_current_user_optional),
 ):
     """
     Add a user to a project.
+
+    Requires Project Admin role or Organization Admin/Owner role.
 
     - **user_id**: UUID of the user to add
     - **role**: Project role (admin, editor, viewer)
@@ -211,6 +305,16 @@ def add_project_member(
     project = crud.get_project(db, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+
+    # In team mode, verify user has project admin or org admin/owner role
+    if current_user:
+        try:
+            check_project_permission(
+                db, current_user.id, project_id,
+                models.ProjectRole.ADMIN, "add project members"
+            )
+        except PermissionDeniedError as e:
+            raise _handle_permission_error(e)
 
     try:
         result = crud.add_project_member(
@@ -230,9 +334,12 @@ def update_project_member(
     user_id: UUID,
     member_update: schemas.ProjectMemberUpdate,
     db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_current_user_optional),
 ):
     """
     Update a project member's role.
+
+    Requires Project Admin role or Organization Admin/Owner role.
 
     - **role**: New project role
     """
@@ -240,6 +347,16 @@ def update_project_member(
     project = crud.get_project(db, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+
+    # In team mode, verify user has project admin or org admin/owner role
+    if current_user:
+        try:
+            check_project_permission(
+                db, current_user.id, project_id,
+                models.ProjectRole.ADMIN, "update project member roles"
+            )
+        except PermissionDeniedError as e:
+            raise _handle_permission_error(e)
 
     try:
         result = crud.update_project_member_role(
@@ -258,14 +375,27 @@ def remove_project_member(
     project_id: UUID,
     user_id: UUID,
     db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_current_user_optional),
 ):
     """
     Remove a user from a project.
+
+    Requires Project Admin role or Organization Admin/Owner role.
     """
     # Check project exists
     project = crud.get_project(db, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+
+    # In team mode, verify user has project admin or org admin/owner role
+    if current_user:
+        try:
+            check_project_permission(
+                db, current_user.id, project_id,
+                models.ProjectRole.ADMIN, "remove project members"
+            )
+        except PermissionDeniedError as e:
+            raise _handle_permission_error(e)
 
     success = crud.remove_project_member(
         db=db,

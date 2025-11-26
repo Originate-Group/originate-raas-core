@@ -102,10 +102,11 @@ class QualityScore(str, enum.Enum):
 
 
 class GuardrailCategory(str, enum.Enum):
-    """Guardrail category enum - MVP scope."""
+    """Guardrail category enum."""
 
     SECURITY = "security"
     ARCHITECTURE = "architecture"
+    BUSINESS = "business"
 
 
 class GuardrailStatus(str, enum.Enum):
