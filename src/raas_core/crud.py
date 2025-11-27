@@ -2865,7 +2865,7 @@ def update_task(
                         organization_id=task.organization_id,
                         project_id=task.project_id,
                         target_artifact_type=task.artifact_type or "requirement",
-                        target_artifact_id=task.artifact_id,
+                        target_artifact_id=str(task.artifact_id) if task.artifact_id else None,
                         assignee_id=task.assignees[0].id if task.assignees else None,
                         clarification_task_id=str(task.id),
                     )
