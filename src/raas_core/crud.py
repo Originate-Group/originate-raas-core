@@ -2737,7 +2737,7 @@ def get_tasks(
     ]
     query = query.order_by(
         # Custom priority ordering
-        db.case(
+        case(
             {p: i for i, p in enumerate(priority_order)},
             value=models.Task.priority
         ),
