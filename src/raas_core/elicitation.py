@@ -63,47 +63,25 @@ def create_clarification_point(
 
 def get_clarification_point(
     db: Session,
-    point_id: UUID
-) -> Optional[ClarificationPoint]:
-    """Get a clarification point by ID."""
-    return db.query(ClarificationPoint).filter(ClarificationPoint.id == point_id).first()
-
-
-def get_clarification_point_by_human_id(
-    db: Session,
-    human_readable_id: str
-) -> Optional[ClarificationPoint]:
-    """Get a clarification point by human-readable ID."""
-    return db.query(ClarificationPoint).filter(
-        ClarificationPoint.human_readable_id == human_readable_id.upper()
-    ).first()
-
-
-def get_clarification_point_by_any_id(
-    db: Session,
     point_id: str
 ) -> Optional[ClarificationPoint]:
-    """Get a clarification point by UUID or human-readable ID (e.g., CLAR-001).
-
-    Args:
-        db: Database session
-        point_id: Either UUID string or human-readable ID
-
-    Returns:
-        ClarificationPoint instance or None if not found
-    """
-    # Try UUID first (most common case, faster)
+    """Get a clarification point by UUID or human-readable ID (e.g., CLAR-001)."""
+    # Try UUID first
     try:
         uuid_id = UUID(point_id)
         return db.query(ClarificationPoint).filter(ClarificationPoint.id == uuid_id).first()
     except (ValueError, AttributeError):
-        # Not a valid UUID, try human-readable ID
         pass
 
     # Try human-readable ID (case-insensitive)
     return db.query(ClarificationPoint).filter(
         ClarificationPoint.human_readable_id == point_id.upper()
     ).first()
+
+
+# Aliases for backwards compatibility
+get_clarification_point_by_human_id = get_clarification_point
+get_clarification_point_by_any_id = get_clarification_point
 
 
 def list_clarification_points(
@@ -421,47 +399,25 @@ def create_elicitation_session(
 
 def get_elicitation_session(
     db: Session,
-    session_id: UUID,
-) -> Optional[ElicitationSession]:
-    """Get an elicitation session by ID."""
-    return db.query(ElicitationSession).filter(ElicitationSession.id == session_id).first()
-
-
-def get_elicitation_session_by_human_id(
-    db: Session,
-    human_readable_id: str,
-) -> Optional[ElicitationSession]:
-    """Get an elicitation session by human-readable ID."""
-    return db.query(ElicitationSession).filter(
-        ElicitationSession.human_readable_id == human_readable_id.upper()
-    ).first()
-
-
-def get_elicitation_session_by_any_id(
-    db: Session,
     session_id: str,
 ) -> Optional[ElicitationSession]:
-    """Get an elicitation session by UUID or human-readable ID (e.g., ELIC-001).
-
-    Args:
-        db: Database session
-        session_id: Either UUID string or human-readable ID
-
-    Returns:
-        ElicitationSession instance or None if not found
-    """
-    # Try UUID first (most common case, faster)
+    """Get an elicitation session by UUID or human-readable ID (e.g., ELIC-001)."""
+    # Try UUID first
     try:
         uuid_id = UUID(session_id)
         return db.query(ElicitationSession).filter(ElicitationSession.id == uuid_id).first()
     except (ValueError, AttributeError):
-        # Not a valid UUID, try human-readable ID
         pass
 
     # Try human-readable ID (case-insensitive)
     return db.query(ElicitationSession).filter(
         ElicitationSession.human_readable_id == session_id.upper()
     ).first()
+
+
+# Aliases for backwards compatibility
+get_elicitation_session_by_human_id = get_elicitation_session
+get_elicitation_session_by_any_id = get_elicitation_session
 
 
 def list_elicitation_sessions(
@@ -519,10 +475,10 @@ def get_active_session_for_clarification(
 
 def update_elicitation_session(
     db: Session,
-    session_id: UUID,
+    session_id: str,
     data: ElicitationSessionUpdate,
 ) -> Optional[ElicitationSession]:
-    """Update an elicitation session."""
+    """Update an elicitation session. Accepts UUID or human-readable ID (e.g., ELIC-001)."""
     session = get_elicitation_session(db, session_id)
     if not session:
         return None
@@ -545,10 +501,10 @@ def update_elicitation_session(
 
 def add_message_to_session(
     db: Session,
-    session_id: UUID,
+    session_id: str,
     data: ElicitationSessionAddMessage,
 ) -> Optional[ElicitationSession]:
-    """Add a message to the conversation history."""
+    """Add a message to the conversation history. Accepts UUID or human-readable ID (e.g., ELIC-001)."""
     session = get_elicitation_session(db, session_id)
     if not session:
         return None
@@ -633,10 +589,10 @@ def update_session_progress(
 
 def complete_elicitation_session(
     db: Session,
-    session_id: UUID,
+    session_id: str,
     final_artifact_id: Optional[UUID] = None,
 ) -> Optional[ElicitationSession]:
-    """Mark an elicitation session as completed."""
+    """Mark an elicitation session as completed. Accepts UUID or human-readable ID (e.g., ELIC-001)."""
     session = get_elicitation_session(db, session_id)
     if not session:
         return None
