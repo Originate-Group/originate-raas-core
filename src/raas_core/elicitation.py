@@ -410,6 +410,33 @@ def get_elicitation_session_by_human_id(
     ).first()
 
 
+def get_elicitation_session_by_any_id(
+    db: Session,
+    session_id: str,
+) -> Optional[ElicitationSession]:
+    """Get an elicitation session by UUID or human-readable ID (e.g., ELIC-001).
+
+    Args:
+        db: Database session
+        session_id: Either UUID string or human-readable ID
+
+    Returns:
+        ElicitationSession instance or None if not found
+    """
+    # Try UUID first (most common case, faster)
+    try:
+        uuid_id = UUID(session_id)
+        return db.query(ElicitationSession).filter(ElicitationSession.id == uuid_id).first()
+    except (ValueError, AttributeError):
+        # Not a valid UUID, try human-readable ID
+        pass
+
+    # Try human-readable ID (case-insensitive)
+    return db.query(ElicitationSession).filter(
+        ElicitationSession.human_readable_id == session_id.upper()
+    ).first()
+
+
 def list_elicitation_sessions(
     db: Session,
     organization_id: Optional[UUID] = None,

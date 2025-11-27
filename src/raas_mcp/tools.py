@@ -1783,7 +1783,7 @@ def get_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "session_id": {"type": "string", "description": "Session UUID"},
+                    "session_id": {"type": "string", "description": "Session UUID or human-readable ID (e.g., 'ELIC-001')"},
                     "role": {"type": "string", "enum": ["user", "assistant", "system"], "description": "Message role"},
                     "content": {"type": "string", "description": "Message content"},
                     "metadata": {"type": "object", "description": "Optional metadata"}
