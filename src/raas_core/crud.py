@@ -2565,6 +2565,56 @@ def record_change_request_modification(
 # ============================================================================
 
 
+def _resolve_source_id(
+    db: Session,
+    source_type: Optional[str],
+    source_id: Optional[str],
+) -> Optional[UUID]:
+    """Resolve a source_id to UUID, handling human-readable IDs.
+
+    Args:
+        db: Database session
+        source_type: Type of source (elicitation_session, clarification_point, requirement, etc.)
+        source_id: UUID string or human-readable ID
+
+    Returns:
+        Resolved UUID or None if not found/not provided
+    """
+    if not source_id:
+        return None
+
+    # Try parsing as UUID first
+    try:
+        return UUID(source_id)
+    except (ValueError, AttributeError):
+        pass
+
+    # Resolve based on source_type
+    if not source_type:
+        return None
+
+    # Import here to avoid circular imports
+    from raas_core import elicitation
+
+    if source_type == "elicitation_session":
+        session = elicitation.get_elicitation_session(db, source_id)
+        return session.id if session else None
+    elif source_type == "clarification_point":
+        point = elicitation.get_clarification_point(db, source_id)
+        return point.id if point else None
+    elif source_type == "requirement":
+        req = get_requirement_by_any_id(db, source_id)
+        return req.id if req else None
+    elif source_type == "guardrail":
+        guard = get_guardrail(db, source_id)
+        return guard.id if guard else None
+    elif source_type == "change_request":
+        cr = get_change_request(db, source_id)
+        return cr.id if cr else None
+
+    return None
+
+
 def create_task(
     db: Session,
     task_data: schemas.TaskCreate,
@@ -2580,7 +2630,15 @@ def create_task(
 
     Returns:
         Created Task object
+
+    Raises:
+        ValueError: If source_id cannot be resolved
     """
+    # Resolve source_id from human-readable ID if needed
+    resolved_source_id = _resolve_source_id(db, task_data.source_type, task_data.source_id)
+    if task_data.source_id and not resolved_source_id:
+        raise ValueError(f"Could not resolve source_id '{task_data.source_id}' for source_type '{task_data.source_type}'")
+
     task = models.Task(
         organization_id=task_data.organization_id,
         project_id=task_data.project_id,
@@ -2590,7 +2648,7 @@ def create_task(
         priority=task_data.priority,
         due_date=task_data.due_date,
         source_type=task_data.source_type,
-        source_id=task_data.source_id,
+        source_id=resolved_source_id,
         source_context=task_data.source_context,
         created_by=user_id,
     )

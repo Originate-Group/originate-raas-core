@@ -1454,11 +1454,11 @@ def get_tools() -> list[Tool]:
                     },
                     "source_type": {
                         "type": "string",
-                        "description": "Source system type (requirement, guardrail, etc.)"
+                        "description": "Source system type (elicitation_session, clarification_point, requirement, guardrail, change_request)"
                     },
                     "source_id": {
                         "type": "string",
-                        "description": "Source artifact UUID"
+                        "description": "Source artifact UUID or human-readable ID (e.g., ELIC-002, CLAR-001, RAAS-FEAT-042)"
                     }
                 },
                 "required": ["organization_id", "title", "task_type"]

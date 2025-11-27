@@ -619,8 +619,8 @@ class TaskCreate(BaseModel):
     due_date: Optional[datetime] = Field(None, description="Due date (optional)")
     assignee_ids: list[UUID] = Field(default_factory=list, description="List of user UUIDs to assign")
     # Source artifact linking
-    source_type: Optional[str] = Field(None, description="Source system type (requirement, guardrail, etc.)")
-    source_id: Optional[UUID] = Field(None, description="Source artifact UUID")
+    source_type: Optional[str] = Field(None, description="Source system type (elicitation_session, clarification_point, requirement, guardrail, etc.)")
+    source_id: Optional[str] = Field(None, description="Source artifact UUID or human-readable ID (e.g., ELIC-002, CLAR-001, RAAS-FEAT-042)")
     source_context: Optional[dict] = Field(None, description="Additional context from source")
 
 
