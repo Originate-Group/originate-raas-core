@@ -2650,6 +2650,10 @@ def create_task(
         source_type=task_data.source_type,
         source_id=resolved_source_id,
         source_context=task_data.source_context,
+        # Clarification task fields (CR-003)
+        context=task_data.context,
+        artifact_type=task_data.artifact_type,
+        artifact_id=task_data.artifact_id,
         created_by=user_id,
     )
     db.add(task)
@@ -2913,6 +2917,77 @@ def update_task(
     db.commit()
     db.refresh(task)
     logger.info(f"Updated task {task.human_readable_id}")
+    return task
+
+
+def resolve_clarification_task(
+    db: Session,
+    task_id: str,
+    resolution_content: str,
+    user_id: Optional[UUID] = None,
+) -> Optional[models.Task]:
+    """
+    Resolve a clarification task with an answer (CR-003).
+
+    This completes a clarification task and records the resolution content.
+    Only works for tasks with task_type='clarification'.
+
+    Args:
+        db: Database session
+        task_id: Task UUID or human-readable ID
+        resolution_content: The answer/resolution to the clarification
+        user_id: UUID of user resolving the task
+
+    Returns:
+        Updated Task or None if not found
+
+    Raises:
+        ValueError: If task is not a clarification task or already resolved
+    """
+    from datetime import datetime
+
+    task = get_task(db, task_id)
+    if not task:
+        return None
+
+    # Validate this is a clarification task
+    if task.task_type != models.TaskType.CLARIFICATION:
+        raise ValueError(
+            f"Task {task.human_readable_id} is not a clarification task "
+            f"(type is {task.task_type.value})"
+        )
+
+    # Check if already resolved
+    if task.status == models.TaskStatus.COMPLETED:
+        raise ValueError(
+            f"Task {task.human_readable_id} is already completed"
+        )
+
+    # Record old status for history
+    old_status = task.status.value
+
+    # Update task with resolution
+    task.resolution_content = resolution_content
+    task.resolved_at = datetime.utcnow()
+    task.resolved_by = user_id
+    task.status = models.TaskStatus.COMPLETED
+    task.completed_at = datetime.utcnow()
+    task.completed_by = user_id
+
+    # Record completion in history
+    history = models.TaskHistory(
+        task_id=task.id,
+        change_type=models.TaskChangeType.COMPLETED,
+        old_value=old_status,
+        new_value=models.TaskStatus.COMPLETED.value,
+        comment=f"Resolved with answer: {resolution_content[:100]}..." if len(resolution_content) > 100 else f"Resolved with answer: {resolution_content}",
+        changed_by=user_id,
+    )
+    db.add(history)
+
+    db.commit()
+    db.refresh(task)
+    logger.info(f"Resolved clarification task {task.human_readable_id}")
     return task
 
 

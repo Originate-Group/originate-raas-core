@@ -33,6 +33,13 @@ def _task_to_response(task: models.Task) -> schemas.TaskResponse:
         source_type=task.source_type,
         source_id=task.source_id,
         source_context=task.source_context,
+        # Clarification task fields (CR-003)
+        context=task.context,
+        artifact_type=task.artifact_type,
+        artifact_id=task.artifact_id,
+        resolution_content=task.resolution_content,
+        resolved_at=task.resolved_at,
+        resolved_by=task.resolved_by,
         assignee_count=len(task.assignees) if task.assignees else 0,
         created_by=task.created_by,
         created_at=task.created_at,
@@ -61,6 +68,9 @@ def _task_to_list_item(task: models.Task) -> schemas.TaskListItem:
         priority=task.priority,
         due_date=task.due_date,
         source_type=task.source_type,
+        # Clarification task fields (CR-003)
+        artifact_type=task.artifact_type,
+        artifact_id=task.artifact_id,
         assignee_count=len(task.assignees) if task.assignees else 0,
         is_overdue=is_overdue,
         created_at=task.created_at,
@@ -340,6 +350,41 @@ def complete_task(
     update = schemas.TaskUpdate(status=models.TaskStatus.COMPLETED)
     updated = crud.update_task(db, task.id, update, user_id)
     return _task_to_response(updated)
+
+
+@router.post("/{task_id}/resolve", response_model=schemas.TaskResponse)
+def resolve_clarification_task(
+    task_id: str,
+    resolve_data: schemas.ClarificationTaskResolve,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """
+    Resolve a clarification task with an answer (CR-003).
+
+    This marks a clarification task as completed and records the resolution content.
+    Only works for tasks with task_type='clarification'.
+
+    - **task_id**: UUID or human-readable ID of the clarification task
+    - **resolution_content**: The answer/resolution to the clarification
+
+    Raises:
+    - 404: Task not found
+    - 400: Task is not a clarification task
+    - 400: Task already completed
+    """
+    current_user = get_current_user_optional(request)
+    user_id = current_user.id if current_user else None
+
+    try:
+        task = crud.resolve_clarification_task(
+            db, task_id, resolve_data.resolution_content, user_id
+        )
+        if not task:
+            raise HTTPException(status_code=404, detail=f"Task not found: {task_id}")
+        return _task_to_response(task)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/{task_id}/history", response_model=list[schemas.TaskHistoryResponse])

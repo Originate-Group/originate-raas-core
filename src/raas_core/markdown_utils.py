@@ -7,7 +7,7 @@ from uuid import UUID
 
 import yaml
 
-from .models import RequirementType
+from .models import RequirementType, LifecycleStatus
 
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -255,12 +255,19 @@ def extract_metadata(content: str) -> Dict[str, Any]:
     raw_description = description_match.group(1).strip() if description_match else body[:500]
     description = _truncate_description(raw_description, max_length=500)
 
+    # Convert status to LifecycleStatus enum
+    status_str = frontmatter.get("status", "draft")
+    try:
+        status = LifecycleStatus(status_str)
+    except ValueError:
+        raise MarkdownParseError(f"Invalid status value: {status_str}. Valid values: {[s.value for s in LifecycleStatus]}")
+
     # Build metadata dictionary
     metadata = {
         "type": req_type,
         "title": frontmatter["title"],
         "description": description,
-        "status": frontmatter.get("status", "draft"),
+        "status": status,
         "tags": frontmatter.get("tags", []),
         "parent_id": frontmatter.get("parent_id"),
         "depends_on": frontmatter.get("depends_on", []),

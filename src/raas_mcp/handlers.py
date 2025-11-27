@@ -1532,6 +1532,33 @@ async def handle_complete_task(
     return [TextContent(type="text", text=text)], current_scope
 
 
+async def handle_resolve_clarification_task(
+    arguments: dict,
+    client: httpx.AsyncClient,
+    current_scope: Optional[dict] = None
+) -> tuple[list[TextContent], Optional[dict]]:
+    """Resolve a clarification task with an answer (CR-003)."""
+    task_id = arguments["task_id"]
+    resolution_content = arguments["resolution_content"]
+
+    response = await client.post(
+        f"/tasks/{task_id}/resolve",
+        json={"resolution_content": resolution_content}
+    )
+    response.raise_for_status()
+    result = response.json()
+    logger.info(f"Successfully resolved clarification task {result['human_readable_id']}")
+
+    text = (
+        f"Resolved clarification task: {result['human_readable_id']}\n"
+        f"Title: {result['title']}\n"
+        f"Status: {result['status']}\n"
+        f"Resolved at: {result['resolved_at']}\n"
+        f"Resolution: {result['resolution_content'][:200]}{'...' if len(result.get('resolution_content', '')) > 200 else ''}"
+    )
+    return [TextContent(type="text", text=text)], current_scope
+
+
 async def handle_get_my_tasks(
     arguments: dict,
     client: httpx.AsyncClient,
@@ -1596,7 +1623,8 @@ async def handle_create_clarification_point(
     client: httpx.AsyncClient,
     current_scope: Optional[dict] = None
 ) -> tuple[list[TextContent], Optional[dict]]:
-    """Create a new clarification point."""
+    """Create a new clarification point. DEPRECATED (CR-003): Use create_task(task_type='clarification') instead."""
+    logger.warning("DEPRECATED: create_clarification_point is deprecated (CR-003). Use create_task(task_type='clarification') instead.")
     response = await client.post("/elicitation/clarifications", json=arguments)
     response.raise_for_status()
     result = response.json()
@@ -1611,7 +1639,8 @@ async def handle_list_clarification_points(
     client: httpx.AsyncClient,
     current_scope: Optional[dict] = None
 ) -> tuple[list[TextContent], Optional[dict]]:
-    """List clarification points with filtering."""
+    """List clarification points with filtering. DEPRECATED (CR-003): Use list_tasks(task_type='clarification') instead."""
+    logger.warning("DEPRECATED: list_clarification_points is deprecated (CR-003). Use list_tasks(task_type='clarification') instead.")
     params = {k: v for k, v in arguments.items() if v is not None}
     response = await client.get("/elicitation/clarifications", params=params)
     response.raise_for_status()
@@ -1636,7 +1665,8 @@ async def handle_get_my_clarifications(
     client: httpx.AsyncClient,
     current_scope: Optional[dict] = None
 ) -> tuple[list[TextContent], Optional[dict]]:
-    """Get clarification points assigned to current user ('What needs my input?')."""
+    """Get clarification points assigned to current user. DEPRECATED (CR-003): Use get_my_tasks() instead."""
+    logger.warning("DEPRECATED: get_my_clarifications is deprecated (CR-003). Use get_my_tasks() and filter by task_type='clarification' instead.")
     params = {}
     if arguments.get('include_resolved'):
         params['include_resolved'] = 'true'
@@ -1671,7 +1701,8 @@ async def handle_get_clarification_point(
     client: httpx.AsyncClient,
     current_scope: Optional[dict] = None
 ) -> tuple[list[TextContent], Optional[dict]]:
-    """Get a clarification point by ID."""
+    """Get a clarification point by ID. DEPRECATED (CR-003): Use get_task() instead."""
+    logger.warning("DEPRECATED: get_clarification_point is deprecated (CR-003). Use get_task() with a clarification task ID instead.")
     clarification_id = arguments["clarification_id"]
     response = await client.get(f"/elicitation/clarifications/{clarification_id}")
     response.raise_for_status()
@@ -1691,7 +1722,8 @@ async def handle_resolve_clarification_point(
     client: httpx.AsyncClient,
     current_scope: Optional[dict] = None
 ) -> tuple[list[TextContent], Optional[dict]]:
-    """Resolve a clarification point with an answer."""
+    """Resolve a clarification point with an answer. DEPRECATED (CR-003): Use resolve_clarification_task() instead."""
+    logger.warning("DEPRECATED: resolve_clarification_point is deprecated (CR-003). Use resolve_clarification_task() instead.")
     clarification_id = arguments.pop("clarification_id")
     response = await client.post(
         f"/elicitation/clarifications/{clarification_id}/resolve",

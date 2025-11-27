@@ -156,6 +156,7 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent | ImageConten
                 "update_task": handlers.handle_update_task,
                 "assign_task": handlers.handle_assign_task,
                 "complete_task": handlers.handle_complete_task,
+                "resolve_clarification_task": handlers.handle_resolve_clarification_task,
                 "get_my_tasks": handlers.handle_get_my_tasks,
                 # Elicitation handlers (RAAS-EPIC-026)
                 "create_clarification_point": handlers.handle_create_clarification_point,

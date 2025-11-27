@@ -1413,6 +1413,10 @@ def get_tools() -> list[Tool]:
                        "\n• due_date: ISO 8601 datetime"
                        "\n• assignee_ids: List of user UUIDs to assign"
                        "\n• source_type, source_id: Link to source artifact"
+                       "\n\nCLARIFICATION TASK FIELDS (CR-003 - use when task_type='clarification'):"
+                       "\n• artifact_type: Type of artifact needing clarification (requirement, guardrail)"
+                       "\n• artifact_id: UUID of the artifact needing clarification"
+                       "\n• context: Why this clarification is needed"
                        "\n\nRETURNS: Created task with generated TASK-### ID",
             inputSchema={
                 "type": "object",
@@ -1459,6 +1463,18 @@ def get_tools() -> list[Tool]:
                     "source_id": {
                         "type": "string",
                         "description": "Source artifact UUID or human-readable ID (e.g., ELIC-002, CLAR-001, RAAS-FEAT-042)"
+                    },
+                    "artifact_type": {
+                        "type": "string",
+                        "description": "Type of artifact needing clarification: requirement, guardrail (for clarification tasks)"
+                    },
+                    "artifact_id": {
+                        "type": "string",
+                        "description": "UUID of artifact needing clarification (for clarification tasks)"
+                    },
+                    "context": {
+                        "type": "string",
+                        "description": "Why this clarification is needed (for clarification tasks)"
                     }
                 },
                 "required": ["organization_id", "title", "task_type"]
@@ -1634,6 +1650,34 @@ def get_tools() -> list[Tool]:
             }
         ),
         Tool(
+            name="resolve_clarification_task",
+            description="Resolve a clarification task with an answer (CR-003). "
+                       "\n\nMarks a clarification task as completed and records the resolution content. "
+                       "Only works for tasks with task_type='clarification'."
+                       "\n\nThis replaces the deprecated resolve_clarification_point tool."
+                       "\n\nPARAMETERS:"
+                       "\n• task_id: UUID or human-readable ID of the clarification task"
+                       "\n• resolution_content: The answer/resolution to the clarification"
+                       "\n\nERRORS:"
+                       "\n• 404: Task not found"
+                       "\n• 400: Task is not a clarification task"
+                       "\n• 400: Task already completed",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "task_id": {
+                        "type": "string",
+                        "description": "UUID or human-readable ID of the clarification task"
+                    },
+                    "resolution_content": {
+                        "type": "string",
+                        "description": "The answer/resolution to the clarification"
+                    }
+                },
+                "required": ["task_id", "resolution_content"]
+            }
+        ),
+        Tool(
             name="get_my_tasks",
             description="Get all tasks assigned to you. "
                        "\n\nReturns tasks across all organizations and projects where you are assigned. "
@@ -1656,10 +1700,15 @@ def get_tools() -> list[Tool]:
         # RAAS-EPIC-026: Elicitation Tools
         # =====================================================================
 
-        # Clarification Points (RAAS-COMP-060)
+        # Clarification Points (RAAS-COMP-060) - DEPRECATED (CR-003)
+        # These tools are deprecated. Use create_task(task_type='clarification') instead.
         Tool(
             name="create_clarification_point",
-            description="Create a clarification point to track a question or gap needing stakeholder input. "
+            description="**DEPRECATED (CR-003)**: Use create_task(task_type='clarification') instead. "
+                       "\n\nThis tool will continue to work but is deprecated. Clarification points have been "
+                       "consolidated into the unified task queue."
+                       "\n\n---\n\n"
+                       "Create a clarification point to track a question or gap needing stakeholder input. "
                        "\n\nClarification points are linked to artifacts (requirements, guardrails) and can be "
                        "assigned to users for resolution. Use this to capture ambiguities, missing information, "
                        "or questions that need business stakeholder answers."
@@ -1687,7 +1736,10 @@ def get_tools() -> list[Tool]:
         ),
         Tool(
             name="list_clarification_points",
-            description="List clarification points with filtering. "
+            description="**DEPRECATED (CR-003)**: Use list_tasks(task_type='clarification') instead. "
+                       "\n\nThis tool will continue to work but is deprecated."
+                       "\n\n---\n\n"
+                       "List clarification points with filtering. "
                        "\n\nUse this to find clarification points by status, assignee, artifact, or priority.",
             inputSchema={
                 "type": "object",
@@ -1707,7 +1759,10 @@ def get_tools() -> list[Tool]:
         ),
         Tool(
             name="get_my_clarifications",
-            description="Get clarification points assigned to YOU ('What needs my input?'). "
+            description="**DEPRECATED (CR-003)**: Use get_my_tasks() and filter by task_type='clarification' instead. "
+                       "\n\nThis tool will continue to work but is deprecated."
+                       "\n\n---\n\n"
+                       "Get clarification points assigned to YOU ('What needs my input?'). "
                        "\n\nThis is the primary tool for business stakeholders to see what questions need their answers. "
                        "Returns clarifications sorted by priority (blocking first) and due date."
                        "\n\nBy default excludes resolved clarifications.",
@@ -1721,7 +1776,10 @@ def get_tools() -> list[Tool]:
         ),
         Tool(
             name="get_clarification_point",
-            description="Get details of a specific clarification point. "
+            description="**DEPRECATED (CR-003)**: Use get_task() with a clarification task ID instead. "
+                       "\n\nThis tool will continue to work but is deprecated."
+                       "\n\n---\n\n"
+                       "Get details of a specific clarification point. "
                        "\n\nAccepts both UUID and human-readable ID (e.g., 'CLAR-001').",
             inputSchema={
                 "type": "object",
@@ -1733,7 +1791,10 @@ def get_tools() -> list[Tool]:
         ),
         Tool(
             name="resolve_clarification_point",
-            description="Resolve a clarification point with an answer. "
+            description="**DEPRECATED (CR-003)**: Use resolve_clarification_task() instead. "
+                       "\n\nThis tool will continue to work but is deprecated."
+                       "\n\n---\n\n"
+                       "Resolve a clarification point with an answer. "
                        "\n\nMarks the clarification as resolved and records the resolution content.",
             inputSchema={
                 "type": "object",

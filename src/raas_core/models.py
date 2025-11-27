@@ -793,6 +793,15 @@ class Task(Base):
     source_id = Column(UUID(as_uuid=True), nullable=True)  # UUID of source artifact
     source_context = Column(JSONB, nullable=True)  # Additional context from source
 
+    # Clarification task fields (CR-003: consolidate clarification_points into tasks)
+    # These fields are used when task_type='clarification' to store clarification-specific data
+    context = Column(Text, nullable=True)  # Why this clarification is needed
+    artifact_type = Column(String(50), nullable=True)  # Type of artifact needing clarification (requirement, guardrail)
+    artifact_id = Column(UUID(as_uuid=True), nullable=True)  # UUID of artifact needing clarification
+    resolution_content = Column(Text, nullable=True)  # The answer/resolution to the clarification
+    resolved_at = Column(DateTime, nullable=True)  # When the clarification was resolved
+    resolved_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
     # Audit fields
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
@@ -805,6 +814,7 @@ class Task(Base):
     project = relationship("Project")
     creator = relationship("User", foreign_keys=[created_by])
     completer = relationship("User", foreign_keys=[completed_by])
+    resolver = relationship("User", foreign_keys=[resolved_by])  # For clarification tasks
 
     # Many-to-many relationship with users via task_assignees
     # Need to specify foreign_keys because task_assignees has multiple FK to users

@@ -608,6 +608,10 @@ class TaskCreate(BaseModel):
     Tasks can be created directly by users or by task sources (clarification
     points, review requests, etc.). Source-created tasks should include
     source_type and source_id for bidirectional linking.
+
+    For clarification tasks (task_type='clarification'), use the clarification-specific
+    fields: artifact_type, artifact_id, and context. These replace the separate
+    clarification_points entity (CR-003).
     """
 
     organization_id: UUID = Field(..., description="Organization UUID")
@@ -622,6 +626,10 @@ class TaskCreate(BaseModel):
     source_type: Optional[str] = Field(None, description="Source system type (elicitation_session, clarification_point, requirement, guardrail, etc.)")
     source_id: Optional[str] = Field(None, description="Source artifact UUID or human-readable ID (e.g., ELIC-002, CLAR-001, RAAS-FEAT-042)")
     source_context: Optional[dict] = Field(None, description="Additional context from source")
+    # Clarification task fields (CR-003: used when task_type='clarification')
+    context: Optional[str] = Field(None, description="Why this clarification is needed (for clarification tasks)")
+    artifact_type: Optional[str] = Field(None, description="Type of artifact needing clarification: requirement, guardrail (for clarification tasks)")
+    artifact_id: Optional[UUID] = Field(None, description="UUID of artifact needing clarification (for clarification tasks)")
 
 
 class TaskUpdate(BaseModel):
@@ -641,6 +649,16 @@ class TaskAssign(BaseModel):
     replace: bool = Field(False, description="If true, replaces all existing assignees; if false, adds to existing")
 
 
+class ClarificationTaskResolve(BaseModel):
+    """Schema for resolving a clarification task (CR-003).
+
+    Used to mark a clarification task as resolved with an answer.
+    This replaces the separate resolve_clarification_point operation.
+    """
+
+    resolution_content: str = Field(..., min_length=1, description="The answer/resolution to the clarification")
+
+
 class TaskResponse(BaseModel):
     """Schema for full task response."""
 
@@ -658,6 +676,13 @@ class TaskResponse(BaseModel):
     source_type: Optional[str] = None
     source_id: Optional[UUID] = None
     source_context: Optional[dict] = None
+    # Clarification task fields (CR-003)
+    context: Optional[str] = None
+    artifact_type: Optional[str] = None
+    artifact_id: Optional[UUID] = None
+    resolution_content: Optional[str] = None
+    resolved_at: Optional[datetime] = None
+    resolved_by: Optional[UUID] = None
     # Assignees
     assignee_count: int = Field(description="Number of assignees")
     # Audit fields
@@ -684,6 +709,9 @@ class TaskListItem(BaseModel):
     priority: TaskPriority
     due_date: Optional[datetime] = None
     source_type: Optional[str] = None
+    # Clarification task fields (CR-003) - for display in list view
+    artifact_type: Optional[str] = None
+    artifact_id: Optional[UUID] = None
     assignee_count: int = Field(description="Number of assignees")
     is_overdue: bool = Field(description="True if due_date is in the past and status is not completed/cancelled")
     created_at: datetime
