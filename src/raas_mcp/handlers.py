@@ -1370,15 +1370,23 @@ async def handle_complete_change_request(
 # ============================================================================
 
 
-def format_task(task: dict) -> str:
-    """Format a task for display."""
+def format_task(task: dict, full_details: bool = False) -> str:
+    """Format a task for display.
+
+    Args:
+        task: Task data dictionary
+        full_details: If True, include full description. If False, truncate to 200 chars.
+    """
     lines = [
         f"**{task['human_readable_id'] or task['id']}**: {task['title']}",
         f"Type: {task['task_type']} | Status: {task['status']} | Priority: {task['priority']}",
     ]
 
     if task.get('description'):
-        lines.append(f"Description: {task['description'][:200]}...")
+        if full_details:
+            lines.append(f"Description: {task['description']}")
+        else:
+            lines.append(f"Description: {task['description'][:200]}...")
 
     if task.get('due_date'):
         lines.append(f"Due: {task['due_date']}")
@@ -1467,7 +1475,7 @@ async def handle_get_task(
     result = response.json()
     logger.info(f"Retrieved task {result['human_readable_id']}")
 
-    text = f"Task Details:\n\n{format_task(result)}"
+    text = f"Task Details:\n\n{format_task(result, full_details=True)}"
     return [TextContent(type="text", text=text)], current_scope
 
 
@@ -1602,8 +1610,13 @@ async def handle_get_my_tasks(
 # =============================================================================
 
 
-def format_clarification(c: dict) -> str:
-    """Format a clarification point for display."""
+def format_clarification(c: dict, full_details: bool = False) -> str:
+    """Format a clarification point for display.
+
+    Args:
+        c: Clarification point data dictionary
+        full_details: If True, include full description. If False, truncate.
+    """
     lines = [
         f"**{c['human_readable_id']}**: {c['title']}",
         f"  Status: {c['status']} | Priority: {c['priority']}",
@@ -1614,7 +1627,10 @@ def format_clarification(c: dict) -> str:
     if c.get('due_date'):
         lines.append(f"  Due: {c['due_date'][:10]}")
     if c.get('description'):
-        lines.append(f"  Description: {c['description'][:100]}...")
+        if full_details:
+            lines.append(f"  Description: {c['description']}")
+        else:
+            lines.append(f"  Description: {c['description'][:100]}...")
     return "\n".join(lines)
 
 
@@ -1708,7 +1724,7 @@ async def handle_get_clarification_point(
     response.raise_for_status()
     result = response.json()
 
-    text = f"Clarification Point Details:\n\n{format_clarification(result)}"
+    text = f"Clarification Point Details:\n\n{format_clarification(result, full_details=True)}"
     if result.get('context'):
         text += f"\n\nContext: {result['context']}"
     if result.get('resolution_content'):
