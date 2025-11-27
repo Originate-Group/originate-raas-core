@@ -1,6 +1,6 @@
 """Task Queue API endpoints (RAAS-EPIC-027, RAAS-COMP-065)."""
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 from math import ceil
@@ -46,7 +46,7 @@ def _task_to_list_item(task: models.Task) -> schemas.TaskListItem:
     """Convert Task model to TaskListItem schema."""
     is_overdue = (
         task.due_date is not None
-        and task.due_date < datetime.utcnow()
+        and task.due_date < datetime.now(timezone.utc)
         and task.status not in [models.TaskStatus.COMPLETED, models.TaskStatus.CANCELLED]
     )
     return schemas.TaskListItem(
