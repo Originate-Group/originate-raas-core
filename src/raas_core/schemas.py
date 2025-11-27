@@ -1061,6 +1061,11 @@ class GapAnalysisResponse(BaseModel):
     findings: List[GapFinding]
     sections_analyzed: List[str]
     analysis_timestamp: datetime
+    child_analyses: Optional[List["GapAnalysisResponse"]] = None
+
+
+# Enable self-referential model
+GapAnalysisResponse.model_rebuild()
 
 
 class BatchGapAnalysisRequest(BaseModel):

@@ -1708,6 +1708,50 @@ async def handle_complete_elicitation_session(
     return [TextContent(type="text", text=text)], current_scope
 
 
+def _format_analysis_result(result: dict, indent: int = 0) -> list[str]:
+    """Format a single gap analysis result, optionally with indentation."""
+    prefix = "  " * indent
+    text_parts = []
+
+    # Header with score
+    title = result['requirement_title']
+    score = result['completeness_score']
+    if indent == 0:
+        text_parts.append(f"**Gap Analysis: {title}**")
+        text_parts.append(f"Completeness Score: {score:.0%}")
+    else:
+        text_parts.append(f"{prefix}**{title}** ({score:.0%})")
+
+    # Findings
+    findings = result.get('findings', [])
+    if not findings:
+        text_parts.append(f"{prefix}No issues found")
+    else:
+        # Group by severity
+        by_severity = {'critical': [], 'high': [], 'medium': [], 'low': []}
+        for f in findings:
+            by_severity[f['severity']].append(f)
+
+        for severity in ['critical', 'high', 'medium', 'low']:
+            if by_severity[severity]:
+                text_parts.append(f"{prefix}**{severity.upper()} ({len(by_severity[severity])})**")
+                for f in by_severity[severity]:
+                    text_parts.append(f"{prefix}  • [{f['issue_type']}] {f['description']}")
+                    if f.get('suggestion'):
+                        text_parts.append(f"{prefix}    Suggestion: {f['suggestion']}")
+
+    # Recursively format children
+    child_analyses = result.get('child_analyses')
+    if child_analyses:
+        text_parts.append("")
+        text_parts.append(f"{prefix}**Children ({len(child_analyses)}):**")
+        for child in child_analyses:
+            text_parts.append("")
+            text_parts.extend(_format_analysis_result(child, indent + 1))
+
+    return text_parts
+
+
 async def handle_analyze_requirement(
     arguments: dict,
     client: httpx.AsyncClient,
@@ -1718,28 +1762,7 @@ async def handle_analyze_requirement(
     response.raise_for_status()
     result = response.json()
 
-    text_parts = [
-        f"**Gap Analysis: {result['requirement_title']}**",
-        f"Completeness Score: {result['completeness_score']:.0%}",
-        ""
-    ]
-
-    findings = result.get('findings', [])
-    if not findings:
-        text_parts.append("No issues found - requirement is well-defined!")
-    else:
-        # Group by severity
-        by_severity = {'critical': [], 'high': [], 'medium': [], 'low': []}
-        for f in findings:
-            by_severity[f['severity']].append(f)
-
-        for severity in ['critical', 'high', 'medium', 'low']:
-            if by_severity[severity]:
-                text_parts.append(f"\n**{severity.upper()} ({len(by_severity[severity])})**")
-                for f in by_severity[severity]:
-                    text_parts.append(f"  • [{f['issue_type']}] {f['description']}")
-                    if f.get('suggestion'):
-                        text_parts.append(f"    Suggestion: {f['suggestion']}")
+    text_parts = _format_analysis_result(result)
 
     return [TextContent(type="text", text="\n".join(text_parts))], current_scope
 
