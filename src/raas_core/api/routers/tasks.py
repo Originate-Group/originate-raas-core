@@ -286,8 +286,11 @@ def update_task(
     current_user = get_current_user_optional(request)
     user_id = current_user.id if current_user else None
 
-    updated = crud.update_task(db, task.id, task_update, user_id)
-    return _task_to_response(updated)
+    try:
+        updated = crud.update_task(db, task.id, task_update, user_id)
+        return _task_to_response(updated)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/{task_id}/assign", response_model=schemas.TaskResponse)
@@ -347,9 +350,12 @@ def complete_task(
     current_user = get_current_user_optional(request)
     user_id = current_user.id if current_user else None
 
-    update = schemas.TaskUpdate(status=models.TaskStatus.COMPLETED)
-    updated = crud.update_task(db, task.id, update, user_id)
-    return _task_to_response(updated)
+    try:
+        update = schemas.TaskUpdate(status=models.TaskStatus.COMPLETED)
+        updated = crud.update_task(db, task.id, update, user_id)
+        return _task_to_response(updated)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/{task_id}/resolve", response_model=schemas.TaskResponse)

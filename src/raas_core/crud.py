@@ -2849,9 +2849,47 @@ def update_task(
         task.description = task_update.description
 
     if task_update.status is not None and task_update.status != task.status:
-        old_status = task.status.value
+        old_status = task.status
+        old_status_value = task.status.value
+
+        # RAAS-FEAT-096: Handle clarification task workflow
+        if task.task_type == models.TaskType.CLARIFICATION:
+            # Auto-create elicitation session when starting a clarification task
+            if old_status == models.TaskStatus.PENDING and task_update.status == models.TaskStatus.IN_PROGRESS:
+                from . import elicitation
+                # Check if session already exists
+                existing_session = elicitation.get_active_session_for_clarification_task(db, task.id)
+                if not existing_session:
+                    # Create elicitation session automatically
+                    session_data = schemas.ElicitationSessionCreate(
+                        organization_id=task.organization_id,
+                        project_id=task.project_id,
+                        target_artifact_type=task.artifact_type or "requirement",
+                        target_artifact_id=task.artifact_id,
+                        assignee_id=task.assignees[0].id if task.assignees else None,
+                        clarification_task_id=str(task.id),
+                    )
+                    elicitation.create_elicitation_session(db, session_data, user_id)
+                    logger.info(f"Auto-created elicitation session for clarification task {task.human_readable_id}")
+
+            # Enforce session requirement for completion
+            if task_update.status == models.TaskStatus.COMPLETED:
+                from . import elicitation
+                existing_session = elicitation.get_active_session_for_clarification_task(db, task.id)
+                # Also check completed sessions
+                if not existing_session:
+                    completed_session = db.query(models.ElicitationSession).filter(
+                        models.ElicitationSession.clarification_task_id == task.id
+                    ).first()
+                    existing_session = completed_session
+                if not existing_session:
+                    raise ValueError(
+                        f"Clarification task {task.human_readable_id} cannot be completed "
+                        f"without an elicitation session. Start the task first (move to in_progress)."
+                    )
+
         task.status = task_update.status
-        changes.append(('status', old_status, task_update.status.value))
+        changes.append(('status', old_status_value, task_update.status.value))
 
         # Handle completion
         if task_update.status == models.TaskStatus.COMPLETED:
@@ -2961,6 +2999,21 @@ def resolve_clarification_task(
     if task.status == models.TaskStatus.COMPLETED:
         raise ValueError(
             f"Task {task.human_readable_id} is already completed"
+        )
+
+    # RAAS-FEAT-096: Enforce session requirement for completion
+    from . import elicitation
+    existing_session = elicitation.get_active_session_for_clarification_task(db, task.id)
+    # Also check completed sessions
+    if not existing_session:
+        completed_session = db.query(models.ElicitationSession).filter(
+            models.ElicitationSession.clarification_task_id == task.id
+        ).first()
+        existing_session = completed_session
+    if not existing_session:
+        raise ValueError(
+            f"Clarification task {task.human_readable_id} cannot be resolved "
+            f"without an elicitation session. Start the task first (move to in_progress)."
         )
 
     # Record old status for history
