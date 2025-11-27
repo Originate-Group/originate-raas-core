@@ -348,8 +348,8 @@ def create_clarification_point_task(
         "title": clarification_point.title,
     }
 
-    # Assignee from clarification point
-    assignee_ids = [clarification_point.assignee_id] if clarification_point.assignee_id else None
+    # Assignee from clarification point (must be a list, not None)
+    assignee_ids = [clarification_point.assignee_id] if clarification_point.assignee_id else []
 
     task_data = schemas.TaskCreate(
         organization_id=clarification_point.organization_id,
@@ -360,7 +360,7 @@ def create_clarification_point_task(
         priority=task_priority,
         due_date=clarification_point.due_date or calculate_due_date(TaskSourceType.CLARIFICATION_POINT),
         source_type=TaskSourceType.CLARIFICATION_POINT,
-        source_id=clarification_point.id,
+        source_id=str(clarification_point.id),  # Must be string per TaskCreate schema
         source_context=source_context,
         assignee_ids=assignee_ids,
     )
