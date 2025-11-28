@@ -143,9 +143,12 @@ class RequirementResponse(RequirementBase):
     def inject_database_state_into_content(self):
         """Inject current database state into content frontmatter.
 
-        The stored content only contains authored fields (type, title, parent_id, tags,
-        depends_on, adheres_to). System-managed fields (status, human_readable_id, etc.)
-        are dynamically injected from database columns when returning to clients.
+        The stored content only contains authored fields (type, title, parent_id,
+        depends_on, adheres_to). System-managed fields (status, human_readable_id,
+        tags) are dynamically injected from database columns when returning to clients.
+
+        BUG-004: Tags are now injected from database (not stored in content) to prevent
+        tag changes from triggering versioning or status regression.
 
         This ensures clients always see the current authoritative state, not stale
         values from stored frontmatter.
@@ -156,7 +159,8 @@ class RequirementResponse(RequirementBase):
                 self.content = inject_database_state(
                     self.content,
                     self.status.value if hasattr(self.status, 'value') else str(self.status),
-                    self.human_readable_id
+                    self.human_readable_id,
+                    self.tags,  # BUG-004: Inject tags from database
                 )
             except Exception:
                 # If injection fails, return content as-is

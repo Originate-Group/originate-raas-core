@@ -536,8 +536,18 @@ def update_requirement(
     if "content" in update_data and update_data["content"]:
         # BUG-001 Fix 2: Check if content is actually changing (not just status via frontmatter)
         # Only enforce content-edit authorization if the actual spec content is being modified
+        # BUG-004: Strip system fields from both old and new before comparing
+        # This ensures tag/status changes don't incorrectly trigger content-edit authorization
         new_content = update_data["content"]
-        if content_has_changed(db_requirement.content, new_content):
+        try:
+            cleaned_new = strip_system_fields_from_frontmatter(new_content)
+            old_content = db_requirement.content or ""
+            cleaned_old = strip_system_fields_from_frontmatter(old_content) if old_content else ""
+        except MarkdownParseError:
+            # If parsing fails, fall back to raw comparison
+            cleaned_new = new_content
+            cleaned_old = db_requirement.content or ""
+        if content_has_changed(cleaned_old, cleaned_new):
             # Content is actually changing - check persona authorization
             # Note: require_persona=False for backward compatibility during rollout
             # TODO: Change to require_persona=True once all clients are updated
@@ -657,8 +667,15 @@ def update_requirement(
                         setattr(db_requirement, field, new_value)
             # Update content (strip system fields before storage)
             cleaned_content = strip_system_fields_from_frontmatter(update_data["content"])
+            # BUG-004: Strip system fields from old content too before comparing
+            # This ensures tag/status changes don't trigger versioning
             old_content = db_requirement.content or ""
-            if content_has_changed(old_content, cleaned_content):
+            try:
+                cleaned_old_content = strip_system_fields_from_frontmatter(old_content) if old_content else ""
+            except MarkdownParseError:
+                # If old content can't be parsed, use it as-is (legacy content)
+                cleaned_old_content = old_content
+            if content_has_changed(cleaned_old_content, cleaned_content):
                 changes.append(("content", "markdown updated", "markdown updated"))
 
                 # CR-002: Create immutable version snapshot on content change

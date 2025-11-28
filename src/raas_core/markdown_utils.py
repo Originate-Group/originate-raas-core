@@ -345,11 +345,12 @@ def strip_system_fields_from_frontmatter(content: str) -> str:
     body = parsed["body"]
 
     # Define authored fields (everything else gets stripped)
+    # BUG-004: tags removed - tags are operational metadata stored in database column only
+    # This prevents tag changes from triggering versioning or status regression
     AUTHORED_FIELDS = {
         "type",
         "title",
         "parent_id",
-        "tags",
         "depends_on",
         "adheres_to"
     }
@@ -370,17 +371,26 @@ def strip_system_fields_from_frontmatter(content: str) -> str:
     return f"---\n{frontmatter_yaml}---\n\n{body}"
 
 
-def inject_database_state(content: str, status: str, human_readable_id: Optional[str] = None) -> str:
+def inject_database_state(
+    content: str,
+    status: str,
+    human_readable_id: Optional[str] = None,
+    tags: Optional[list] = None,
+) -> str:
     """Inject current database state into frontmatter for retrieval.
 
     When returning requirements to clients, we need to compose complete frontmatter
     by injecting current database values. This ensures clients always see the
     current authoritative state, not stale values from stored frontmatter.
 
+    BUG-004: Tags are now injected from database (not stored in content) to prevent
+    tag changes from triggering versioning or status regression.
+
     Args:
         content: The stored markdown content (with only authored fields)
         status: Current lifecycle status from database
         human_readable_id: Human-readable ID from database (e.g., RAAS-FEAT-042)
+        tags: Current tags from database (BUG-004: operational metadata)
 
     Returns:
         Markdown content with complete frontmatter including current database state
@@ -396,6 +406,9 @@ def inject_database_state(content: str, status: str, human_readable_id: Optional
     frontmatter["status"] = status
     if human_readable_id:
         frontmatter["human_readable_id"] = human_readable_id
+    # BUG-004: Inject tags from database (not stored in content)
+    if tags is not None:
+        frontmatter["tags"] = tags
 
     # Convert any enum values to strings
     for key, value in frontmatter.items():
