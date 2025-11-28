@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .routers import requirements, organizations, projects, users, guardrails, tasks, work_items, github
+from .routers import requirements, organizations, projects, users, guardrails, tasks, work_items, github, deployments
 
 # Configure logging
 logging.basicConfig(
@@ -44,6 +44,7 @@ app.include_router(users.router, prefix="/api/v1/users")
 app.include_router(tasks.router, prefix="/api/v1/tasks")
 app.include_router(work_items.router, prefix="/api/v1")  # CR-010: Work Items
 app.include_router(github.router, prefix="/api/v1")  # CR-010: GitHub Integration
+app.include_router(deployments.router, prefix="/api/v1")  # RAAS-FEAT-103: Deployment Tracking
 
 
 @app.get("/")

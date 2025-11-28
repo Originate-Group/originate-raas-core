@@ -191,6 +191,29 @@ class WorkItemStatus(str, enum.Enum):
     CANCELLED = "cancelled"     # Terminal: abandoned
 
 
+# RAAS-FEAT-103: Multi-Environment Deployment Tracking
+class Environment(str, enum.Enum):
+    """Deployment environment enum."""
+
+    DEV = "dev"
+    STAGING = "staging"
+    PROD = "prod"
+
+
+class DeploymentStatus(str, enum.Enum):
+    """Deployment status enum.
+
+    Lifecycle: pending -> deploying -> success/failed
+    Can transition to rolled_back from success or deploying.
+    """
+
+    PENDING = "pending"       # Deployment queued
+    DEPLOYING = "deploying"   # Deployment in progress
+    SUCCESS = "success"       # Deployment completed successfully
+    FAILED = "failed"         # Deployment failed
+    ROLLED_BACK = "rolled_back"  # Deployment was rolled back
+
+
 class Organization(Base):
     """
     Organization model for workspaces/teams.
@@ -1385,6 +1408,65 @@ class WorkItemHistory(Base):
 
     def __repr__(self) -> str:
         return f"<WorkItemHistory {self.work_item_id}: {self.change_type} at {self.changed_at}>"
+
+
+class Deployment(Base):
+    """
+    Deployment model for multi-environment tracking (RAAS-FEAT-103).
+
+    Tracks Release deployments across dev, staging, and prod environments.
+    Each Release can have one Deployment record per environment.
+    Only prod deployments trigger requirement.deployed_version_id updates.
+    """
+
+    __tablename__ = "deployments"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+
+    # Link to Release work item
+    release_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("work_items.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    # Environment and status
+    environment = Column(
+        Enum(Environment, values_callable=lambda x: [e.value for e in x]),
+        nullable=False,
+        index=True
+    )
+    status = Column(
+        Enum(DeploymentStatus, values_callable=lambda x: [e.value for e in x]),
+        nullable=False,
+        default=DeploymentStatus.PENDING,
+        index=True
+    )
+
+    # Artifact references
+    # Structure: {docker_tag, git_sha, image_digest}
+    artifact_ref = Column(JSONB, nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    deployed_at = Column(DateTime, nullable=True)  # When deployment completed
+    rolled_back_at = Column(DateTime, nullable=True)
+
+    # Audit - who triggered/approved (important for prod)
+    deployed_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    # Relationships
+    release = relationship("WorkItem")
+    deployed_by_user = relationship("User")
+
+    # Unique constraint: one deployment per release per environment
+    __table_args__ = (
+        UniqueConstraint("release_id", "environment", name="uq_deployment_release_environment"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<Deployment {self.release_id}: {self.environment.value} - {self.status.value}>"
 
 
 class RequirementVersion(Base):

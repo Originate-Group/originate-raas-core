@@ -25,6 +25,8 @@ from .models import (
     WorkItemType,     # CR-010: Work Item types
     WorkItemStatus,   # CR-010: Work Item lifecycle
     GitHubAuthType,   # CR-010: GitHub auth types
+    Environment,      # RAAS-FEAT-103: Deployment environments
+    DeploymentStatus, # RAAS-FEAT-103: Deployment status
 )
 
 
@@ -1501,3 +1503,87 @@ class GitHubIssueSyncResponse(BaseModel):
     github_issue_url: str
     github_issue_number: int
     action: str  # created, updated, linked
+
+
+# =============================================================================
+# RAAS-FEAT-103: Multi-Environment Deployment Tracking
+# =============================================================================
+
+
+class DeploymentCreate(BaseModel):
+    """Schema for creating a deployment record."""
+
+    release_id: UUID = Field(..., description="Release Work Item UUID")
+    environment: Environment = Field(..., description="Target environment")
+    artifact_ref: Optional[dict] = Field(
+        None,
+        description="Artifact references: {docker_tag, git_sha, image_digest}"
+    )
+
+
+class DeploymentUpdate(BaseModel):
+    """Schema for updating a deployment status."""
+
+    status: Optional[DeploymentStatus] = None
+    artifact_ref: Optional[dict] = None
+
+
+class DeploymentTransition(BaseModel):
+    """Schema for transitioning deployment status."""
+
+    new_status: DeploymentStatus = Field(..., description="Target status")
+
+
+class DeploymentResponse(BaseModel):
+    """Schema for deployment response."""
+
+    id: UUID
+    release_id: UUID
+    release_hrid: Optional[str] = None  # e.g., REL-001
+    environment: Environment
+    status: DeploymentStatus
+    artifact_ref: Optional[dict] = None
+    created_at: datetime
+    deployed_at: Optional[datetime] = None
+    rolled_back_at: Optional[datetime] = None
+    deployed_by_user_id: Optional[UUID] = None
+    deployed_by_email: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
+
+
+class DeploymentListItem(BaseModel):
+    """Schema for deployment list items (lightweight)."""
+
+    id: UUID
+    release_id: UUID
+    release_hrid: Optional[str] = None
+    release_tag: Optional[str] = None
+    environment: Environment
+    status: DeploymentStatus
+    created_at: datetime
+    deployed_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
+
+
+class DeploymentListResponse(BaseModel):
+    """Schema for paginated deployment list."""
+
+    items: list[DeploymentListItem]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+class ReleaseDeploymentsResponse(BaseModel):
+    """Schema for all deployments of a single Release."""
+
+    release_id: UUID
+    release_hrid: Optional[str] = None
+    release_tag: Optional[str] = None
+    deployments: dict[str, Optional[DeploymentResponse]] = Field(
+        default_factory=dict,
+        description="Deployment by environment: {dev: ..., staging: ..., prod: ...}"
+    )
