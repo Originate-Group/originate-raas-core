@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .routers import requirements, organizations, projects, users, guardrails, change_requests, tasks
+from .routers import requirements, organizations, projects, users, guardrails, change_requests, tasks, work_items, github
 
 # Configure logging
 logging.basicConfig(
@@ -43,6 +43,8 @@ app.include_router(guardrails.router, prefix="/api/v1/guardrails")
 app.include_router(change_requests.router, prefix="/api/v1/change-requests")
 app.include_router(users.router, prefix="/api/v1/users")
 app.include_router(tasks.router, prefix="/api/v1/tasks")
+app.include_router(work_items.router, prefix="/api/v1")  # CR-010: Work Items
+app.include_router(github.router, prefix="/api/v1")  # CR-010: GitHub Integration
 
 
 @app.get("/")

@@ -40,6 +40,18 @@ requirement_dependencies = Table(
 )
 
 
+# Association table for work item affects (CR-010: RAAS-FEAT-098)
+work_item_affects = Table(
+    'work_item_affects',
+    Base.metadata,
+    Column('id', UUID(as_uuid=True), primary_key=True, default=uuid4),
+    Column('work_item_id', UUID(as_uuid=True), ForeignKey('work_items.id', ondelete='CASCADE'), nullable=False, index=True),
+    Column('requirement_id', UUID(as_uuid=True), ForeignKey('requirements.id', ondelete='CASCADE'), nullable=False, index=True),
+    Column('created_at', DateTime, nullable=False, default=datetime.utcnow),
+    UniqueConstraint('work_item_id', 'requirement_id', name='uq_work_item_affects_requirement'),
+)
+
+
 class RequirementType(str, enum.Enum):
     """Requirement type enum for hierarchy levels."""
 
@@ -132,6 +144,36 @@ class UserType(str, enum.Enum):
 
     HUMAN = "human"
     AGENT = "agent"
+
+
+# =============================================================================
+# Work Item Enums (CR-010: RAAS-COMP-075)
+# =============================================================================
+
+
+class WorkItemType(str, enum.Enum):
+    """Work Item type enum for categorizing implementation work."""
+
+    IR = "ir"           # Implementation Request - new feature work
+    CR = "cr"           # Change Request - modifications to approved requirements
+    BUG = "bug"         # Bug fix
+    TASK = "task"       # General task
+
+
+class WorkItemStatus(str, enum.Enum):
+    """Work Item lifecycle status enum.
+
+    Lifecycle: created -> in_progress -> implemented -> validated -> deployed -> completed
+    Terminal states: completed, cancelled
+    """
+
+    CREATED = "created"         # Initial state
+    IN_PROGRESS = "in_progress" # Work has started
+    IMPLEMENTED = "implemented" # Code complete, ready for validation
+    VALIDATED = "validated"     # Testing/validation passed
+    DEPLOYED = "deployed"       # Deployed to production
+    COMPLETED = "completed"     # Terminal: successfully finished
+    CANCELLED = "cancelled"     # Terminal: abandoned
 
 
 class Organization(Base):
@@ -371,6 +413,10 @@ class Requirement(Base):
         index=True
     )
 
+    # Versioning (CR-010: RAAS-FEAT-097)
+    content_hash = Column(String(64), nullable=True)  # SHA-256 hex for conflict detection
+    current_version_id = Column(UUID(as_uuid=True), ForeignKey("requirement_versions.id", ondelete="SET NULL", use_alter=True), nullable=True)
+
     # Multi-tenancy
     organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
     project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -388,6 +434,17 @@ class Requirement(Base):
     project = relationship("Project", back_populates="requirements")
     created_by_user = relationship("User", foreign_keys=[created_by_user_id], back_populates="created_requirements")
     updated_by_user = relationship("User", foreign_keys=[updated_by_user_id], back_populates="updated_requirements")
+
+    # Versioning relationships (CR-010: RAAS-FEAT-097)
+    versions = relationship("RequirementVersion", back_populates="requirement", foreign_keys="RequirementVersion.requirement_id", cascade="all, delete-orphan")
+    current_version = relationship("RequirementVersion", foreign_keys=[current_version_id], post_update=True)
+
+    # Work Item relationships (CR-010: RAAS-COMP-075)
+    affecting_work_items = relationship(
+        "WorkItem",
+        secondary=work_item_affects,
+        back_populates="affected_requirements"
+    )
 
     # Dependency relationships (many-to-many)
     # Forward: What this requirement depends on
@@ -1248,3 +1305,281 @@ class ElicitationSession(Base):
 
     def __repr__(self) -> str:
         return f"<ElicitationSession {self.human_readable_id}: {self.target_artifact_type}>"
+
+
+# =============================================================================
+# CR-010: Work Items and Requirement Versioning
+# =============================================================================
+
+
+class WorkItem(Base):
+    """
+    Work Item model for tracking implementation work (CR-010: RAAS-COMP-075).
+
+    Work Items are the bridge between specifications (requirements) and execution (code).
+    They track what needs to be built, link to affected requirements, and record
+    implementation artifacts (PRs, commits, releases).
+
+    Types:
+    - IR (Implementation Request): New feature work
+    - CR (Change Request): Modifications to approved requirements
+    - BUG: Bug fixes
+    - TASK: General tasks
+
+    Lifecycle: created -> in_progress -> implemented -> validated -> deployed -> completed
+    """
+
+    __tablename__ = "work_items"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    human_readable_id = Column(String(20), unique=True, nullable=True, index=True)  # e.g., CR-010, IR-003
+
+    # Scope
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True)
+
+    # Core fields
+    work_item_type = Column(
+        Enum(WorkItemType, values_callable=lambda x: [e.value for e in x]),
+        nullable=False,
+        index=True
+    )
+    title = Column(String(200), nullable=False)
+    description = Column(Text, nullable=True)
+    status = Column(
+        Enum(WorkItemStatus, values_callable=lambda x: [e.value for e in x]),
+        nullable=False,
+        default=WorkItemStatus.CREATED,
+        index=True
+    )
+    priority = Column(String(20), nullable=False, default="medium")
+
+    # Assignment
+    assigned_to = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    # CR-specific: proposed content for requirements (RAAS-FEAT-099)
+    # Structure: {requirement_id: "new markdown content"}
+    proposed_content = Column(JSONB, nullable=True)
+    # Structure: {requirement_id: "content_hash"} - for conflict detection
+    baseline_hashes = Column(JSONB, nullable=True)
+
+    # Implementation references (GitHub PRs, commits, releases)
+    # Structure: {github_issue_url, github_issue_number, pr_urls: [], commit_shas: [], release_tag}
+    implementation_refs = Column(JSONB, nullable=True, default=dict)
+
+    # Tags for bidirectional linking (RAAS-FEAT-098)
+    tags = Column(ARRAY(String), default=[])
+
+    # Audit fields
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    # Completion tracking
+    completed_at = Column(DateTime, nullable=True)
+    cancelled_at = Column(DateTime, nullable=True)
+
+    # Relationships
+    organization = relationship("Organization")
+    project = relationship("Project")
+    assignee = relationship("User", foreign_keys=[assigned_to])
+    created_by_user = relationship("User", foreign_keys=[created_by_user_id])
+    updated_by_user = relationship("User", foreign_keys=[updated_by_user_id])
+    history = relationship("WorkItemHistory", back_populates="work_item", cascade="all, delete-orphan")
+
+    # Affected requirements (many-to-many via work_item_affects)
+    affected_requirements = relationship(
+        "Requirement",
+        secondary=work_item_affects,
+        back_populates="affecting_work_items"
+    )
+
+    # Versions created by this work item (for CRs)
+    created_versions = relationship("RequirementVersion", back_populates="source_work_item")
+
+    @property
+    def affects_count(self) -> int:
+        """Count of affected requirements."""
+        return len(self.affected_requirements) if self.affected_requirements else 0
+
+    def __repr__(self) -> str:
+        return f"<WorkItem {self.human_readable_id}: {self.work_item_type.value} - {self.title[:30]}>"
+
+
+class WorkItemHistory(Base):
+    """
+    Work Item change history for audit trail (CR-010: RAAS-COMP-075).
+
+    Records all changes to work items including status changes, assignments,
+    and field updates.
+    """
+
+    __tablename__ = "work_item_history"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    work_item_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("work_items.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    # Change details
+    change_type = Column(String(50), nullable=False)  # created, status_changed, assigned, updated
+    field_name = Column(String(100), nullable=True)
+    old_value = Column(Text, nullable=True)
+    new_value = Column(Text, nullable=True)
+
+    # Audit
+    changed_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    changed_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    change_reason = Column(Text, nullable=True)
+
+    # Relationships
+    work_item = relationship("WorkItem", back_populates="history")
+    changed_by_user = relationship("User")
+
+    def __repr__(self) -> str:
+        return f"<WorkItemHistory {self.work_item_id}: {self.change_type} at {self.changed_at}>"
+
+
+class RequirementVersion(Base):
+    """
+    Immutable version snapshot of requirement content (CR-010: RAAS-FEAT-097).
+
+    Every content change creates a new version record. Versions are immutable
+    and linked to the Work Item (CR) that caused the change.
+    """
+
+    __tablename__ = "requirement_versions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    requirement_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("requirements.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    # Version tracking
+    version_number = Column(Integer, nullable=False)
+
+    # Content snapshot (immutable)
+    content = Column(Text, nullable=False)
+    content_hash = Column(String(64), nullable=False)  # SHA-256 hex
+
+    # Title and description snapshot (for quick reference)
+    title = Column(String(200), nullable=False)
+    description = Column(String(500), nullable=True)
+
+    # Source tracking - what caused this version
+    source_work_item_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("work_items.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )
+    change_reason = Column(Text, nullable=True)
+
+    # Audit
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    created_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    # Relationships
+    requirement = relationship("Requirement", back_populates="versions", foreign_keys=[requirement_id])
+    source_work_item = relationship("WorkItem", back_populates="created_versions")
+    created_by_user = relationship("User")
+
+    # Constraints
+    __table_args__ = (
+        UniqueConstraint("requirement_id", "version_number", name="uq_requirement_version_number"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<RequirementVersion {self.requirement_id} v{self.version_number}>"
+
+
+# =============================================================================
+# CR-010: GitHub Integration (RAAS-COMP-051)
+# =============================================================================
+
+
+class GitHubAuthType(str, enum.Enum):
+    """GitHub authentication type."""
+
+    PAT = "pat"           # Personal Access Token
+    GITHUB_APP = "github_app"  # GitHub App installation
+
+
+class GitHubConfiguration(Base):
+    """
+    GitHub repository configuration for a project (CR-010: RAAS-FEAT-043).
+
+    Each project can connect to one GitHub repository. The configuration
+    stores authentication credentials (encrypted) and webhook settings.
+    """
+
+    __tablename__ = "github_configurations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    project_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,  # One config per project
+        index=True
+    )
+
+    # Repository info
+    repository_owner = Column(String(100), nullable=False)  # e.g., "anthropics"
+    repository_name = Column(String(100), nullable=False)   # e.g., "claude"
+
+    # Authentication
+    auth_type = Column(
+        Enum(GitHubAuthType, values_callable=lambda x: [e.value for e in x]),
+        nullable=False,
+        default=GitHubAuthType.PAT
+    )
+    # Encrypted with Fernet
+    encrypted_credentials = Column(LargeBinary, nullable=True)
+
+    # Webhook configuration
+    webhook_secret_encrypted = Column(LargeBinary, nullable=True)
+    webhook_id = Column(String(50), nullable=True)  # GitHub webhook ID
+
+    # Label mapping for Work Item types
+    # Structure: {"ir": "raas:ir", "cr": "raas:cr", "bug": "raas:bug", "task": "raas:task"}
+    label_mapping = Column(JSONB, nullable=False, default={
+        "ir": "raas:implementation-request",
+        "cr": "raas:change-request",
+        "bug": "raas:bug",
+        "task": "raas:task",
+    })
+
+    # Sync settings
+    auto_create_issues = Column(Boolean, nullable=False, default=True)
+    sync_pr_status = Column(Boolean, nullable=False, default=True)
+    sync_releases = Column(Boolean, nullable=False, default=True)
+
+    # Status
+    is_active = Column(Boolean, nullable=False, default=True)
+    last_sync_at = Column(DateTime, nullable=True)
+    last_error = Column(Text, nullable=True)
+
+    # Audit
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    # Relationships
+    project = relationship("Project")
+    created_by_user = relationship("User")
+
+    @property
+    def full_repo_name(self) -> str:
+        """Get full repository name (owner/name)."""
+        return f"{self.repository_owner}/{self.repository_name}"
+
+    def __repr__(self) -> str:
+        return f"<GitHubConfiguration {self.project_id}: {self.full_repo_name}>"

@@ -23,6 +23,9 @@ from .models import (
     TaskPriority,
     TaskChangeType,
     ExecutionStatus,  # CR-009: Agent task execution tracking
+    WorkItemType,     # CR-010: Work Item types
+    WorkItemStatus,   # CR-010: Work Item lifecycle
+    GitHubAuthType,   # CR-010: GitHub auth types
 )
 
 
@@ -1187,3 +1190,307 @@ class QualityMetricsResponse(BaseModel):
     time_period: str  # weekly, monthly
     metrics: List[dict]  # [{date, completeness_avg, gap_count, ...}, ...]
     trend: str  # improving, stable, declining
+
+
+# =============================================================================
+# CR-010: Work Items (RAAS-COMP-075)
+# =============================================================================
+
+
+class WorkItemCreate(BaseModel):
+    """Schema for creating a new Work Item.
+
+    Work Items track implementation work and link to affected requirements.
+    Types: IR (Implementation Request), CR (Change Request), BUG, TASK
+    """
+
+    organization_id: UUID = Field(..., description="Organization UUID")
+    project_id: Optional[UUID] = Field(None, description="Project UUID (optional)")
+    work_item_type: WorkItemType = Field(..., description="Type: ir, cr, bug, task")
+    title: str = Field(..., min_length=1, max_length=200, description="Work item title")
+    description: Optional[str] = Field(None, description="Detailed description")
+    priority: str = Field("medium", description="Priority: low, medium, high, critical")
+    assigned_to: Optional[UUID] = Field(None, description="Assignee user UUID")
+    tags: list[str] = Field(default_factory=list, description="Tags for bidirectional linking")
+
+    # Affected requirements (RAAS-FEAT-098)
+    affects: list[str] = Field(
+        default_factory=list,
+        description="List of requirement UUIDs or human-readable IDs this work item affects"
+    )
+
+    # CR-specific: proposed content (RAAS-FEAT-099)
+    proposed_content: Optional[dict] = Field(
+        None,
+        description="For CRs: {requirement_id: 'new markdown content'}"
+    )
+
+
+class WorkItemUpdate(BaseModel):
+    """Schema for updating a Work Item."""
+
+    title: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[str] = None
+    status: Optional[WorkItemStatus] = None
+    priority: Optional[str] = None
+    assigned_to: Optional[UUID] = None
+    tags: Optional[list[str]] = None
+
+    # Update affected requirements
+    affects: Optional[list[str]] = Field(
+        None,
+        description="List of requirement UUIDs or human-readable IDs (replaces existing)"
+    )
+
+    # CR-specific updates
+    proposed_content: Optional[dict] = None
+    implementation_refs: Optional[dict] = None
+
+
+class WorkItemTransition(BaseModel):
+    """Schema for transitioning a Work Item status."""
+
+    new_status: WorkItemStatus = Field(..., description="Target status")
+
+
+class WorkItemResponse(BaseModel):
+    """Schema for full Work Item response."""
+
+    id: UUID
+    human_readable_id: Optional[str] = None  # e.g., CR-010, IR-003
+    organization_id: UUID
+    project_id: Optional[UUID] = None
+    work_item_type: WorkItemType
+    title: str
+    description: Optional[str] = None
+    status: WorkItemStatus
+    priority: str
+    assigned_to: Optional[UUID] = None
+    assignee_email: Optional[str] = None
+    assignee_name: Optional[str] = None
+    tags: list[str] = Field(default_factory=list)
+
+    # Affected requirements
+    affects_count: int = Field(description="Number of affected requirements")
+    affected_requirement_ids: list[UUID] = Field(default_factory=list)
+
+    # CR-specific
+    proposed_content: Optional[dict] = None
+    baseline_hashes: Optional[dict] = None
+
+    # Implementation references
+    implementation_refs: Optional[dict] = None
+
+    # Audit
+    created_at: datetime
+    updated_at: datetime
+    created_by: Optional[UUID] = None
+    created_by_email: Optional[str] = None
+    completed_at: Optional[datetime] = None
+    cancelled_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
+
+
+class WorkItemListItem(BaseModel):
+    """Schema for Work Item list items (lightweight)."""
+
+    id: UUID
+    human_readable_id: Optional[str] = None
+    organization_id: UUID
+    project_id: Optional[UUID] = None
+    work_item_type: WorkItemType
+    title: str
+    status: WorkItemStatus
+    priority: str
+    assigned_to: Optional[UUID] = None
+    assignee_email: Optional[str] = None
+    tags: list[str] = Field(default_factory=list)
+    affects_count: int = Field(description="Number of affected requirements")
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
+
+
+class WorkItemListResponse(BaseModel):
+    """Schema for paginated Work Item list."""
+
+    items: list[WorkItemListItem]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+class WorkItemHistoryResponse(BaseModel):
+    """Schema for Work Item history entries."""
+
+    id: UUID
+    work_item_id: UUID
+    change_type: str
+    field_name: Optional[str] = None
+    old_value: Optional[str] = None
+    new_value: Optional[str] = None
+    changed_by: Optional[UUID] = None
+    changed_by_email: Optional[str] = None
+    changed_at: datetime
+    change_reason: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# =============================================================================
+# CR-010: Requirement Versioning (RAAS-FEAT-097)
+# =============================================================================
+
+
+class RequirementVersionResponse(BaseModel):
+    """Schema for Requirement Version response."""
+
+    id: UUID
+    requirement_id: UUID
+    version_number: int
+    content: str
+    content_hash: str
+    title: str
+    description: Optional[str] = None
+    source_work_item_id: Optional[UUID] = None
+    source_work_item_hrid: Optional[str] = None  # e.g., CR-010
+    change_reason: Optional[str] = None
+    created_at: datetime
+    created_by: Optional[UUID] = None
+    created_by_email: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RequirementVersionListItem(BaseModel):
+    """Schema for Requirement Version list items (lightweight, no content)."""
+
+    id: UUID
+    requirement_id: UUID
+    version_number: int
+    content_hash: str
+    title: str
+    source_work_item_id: Optional[UUID] = None
+    source_work_item_hrid: Optional[str] = None
+    created_at: datetime
+    created_by_email: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RequirementVersionListResponse(BaseModel):
+    """Schema for paginated Requirement Version list."""
+
+    items: list[RequirementVersionListItem]
+    total: int
+    requirement_id: UUID
+    current_version_number: Optional[int] = None
+
+
+class RequirementVersionDiff(BaseModel):
+    """Schema for diff between two requirement versions."""
+
+    requirement_id: UUID
+    from_version: int
+    to_version: int
+    from_content: str
+    to_content: str
+    from_title: str
+    to_title: str
+    changes_summary: str  # Human-readable summary of changes
+
+
+# =============================================================================
+# CR-010: GitHub Integration (RAAS-COMP-051)
+# =============================================================================
+
+
+class GitHubConfigurationCreate(BaseModel):
+    """Schema for creating a GitHub configuration.
+
+    Connects a RaaS project to a GitHub repository for Work Item sync.
+    """
+
+    project_id: UUID = Field(..., description="Project UUID to configure")
+    repository_owner: str = Field(..., min_length=1, max_length=100, description="GitHub repo owner (user or org)")
+    repository_name: str = Field(..., min_length=1, max_length=100, description="GitHub repo name")
+    auth_type: GitHubAuthType = Field(GitHubAuthType.PAT, description="Authentication type")
+    credentials: str = Field(..., min_length=1, description="PAT token or GitHub App credentials (will be encrypted)")
+    label_mapping: Optional[dict] = Field(None, description="Custom label mapping for Work Item types")
+    auto_create_issues: bool = Field(True, description="Auto-create GitHub Issues for Work Items")
+    sync_pr_status: bool = Field(True, description="Sync PR status to Work Items")
+    sync_releases: bool = Field(True, description="Trigger deployment on releases")
+
+
+class GitHubConfigurationUpdate(BaseModel):
+    """Schema for updating a GitHub configuration."""
+
+    repository_owner: Optional[str] = Field(None, min_length=1, max_length=100)
+    repository_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    credentials: Optional[str] = Field(None, description="New credentials (will be encrypted)")
+    label_mapping: Optional[dict] = None
+    auto_create_issues: Optional[bool] = None
+    sync_pr_status: Optional[bool] = None
+    sync_releases: Optional[bool] = None
+    is_active: Optional[bool] = None
+
+
+class GitHubConfigurationResponse(BaseModel):
+    """Schema for GitHub configuration response.
+
+    Note: Credentials are never returned - only a masked indicator.
+    """
+
+    id: UUID
+    project_id: UUID
+    repository_owner: str
+    repository_name: str
+    full_repo_name: str  # owner/name
+    auth_type: GitHubAuthType
+    has_credentials: bool = Field(description="True if credentials are configured")
+    webhook_configured: bool = Field(description="True if webhook is set up")
+    label_mapping: dict
+    auto_create_issues: bool
+    sync_pr_status: bool
+    sync_releases: bool
+    is_active: bool
+    last_sync_at: Optional[datetime] = None
+    last_error: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class GitHubWebhookPayload(BaseModel):
+    """Schema for incoming GitHub webhook payload.
+
+    This is a simplified schema - GitHub sends much more data.
+    We extract what we need.
+    """
+
+    action: Optional[str] = None  # opened, closed, reopened, etc.
+    issue: Optional[dict] = None
+    pull_request: Optional[dict] = None
+    release: Optional[dict] = None
+    repository: Optional[dict] = None
+    sender: Optional[dict] = None
+
+
+class GitHubIssueSyncRequest(BaseModel):
+    """Schema for manually syncing a Work Item to GitHub Issue."""
+
+    work_item_id: str = Field(..., description="Work Item UUID or human-readable ID")
+
+
+class GitHubIssueSyncResponse(BaseModel):
+    """Schema for GitHub Issue sync response."""
+
+    work_item_id: UUID
+    work_item_hrid: str
+    github_issue_url: str
+    github_issue_number: int
+    action: str  # created, updated, linked
