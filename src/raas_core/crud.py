@@ -897,6 +897,8 @@ def update_requirement(
                 new_value=new_val,
                 change_reason=change_reason,
                 user_id=user_id,
+                director_id=director_id,  # BUG-002: director/actor audit trail
+                actor_id=actor_id,
             )
 
     return db_requirement
