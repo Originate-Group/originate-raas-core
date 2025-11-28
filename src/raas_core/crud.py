@@ -36,6 +36,13 @@ from .persona_auth import (
     validate_persona_authorization,
     PersonaAuthorizationError,
 )
+from .versioning import (
+    compute_content_hash,
+    create_requirement_version,
+    update_current_version_pointer,
+    should_regress_to_draft,
+    content_has_changed,
+)
 
 logger = logging.getLogger("raas-api.crud")
 
@@ -583,6 +590,15 @@ def update_requirement(
                     )
                     raise ValueError(str(e))
 
+                # CR-002: Update current_version_id when transitioning to approved
+                if metadata["status"] == models.LifecycleStatus.APPROVED:
+                    version = update_current_version_pointer(db, db_requirement)
+                    if version:
+                        logger.info(
+                            f"Updated current_version_id for {db_requirement.human_readable_id or db_requirement.id} "
+                            f"to version {version.version_number} on approval"
+                        )
+
             # Update all fields from markdown
             for field in ["title", "description", "status", "tags"]:
                 if field in metadata:
@@ -594,8 +610,28 @@ def update_requirement(
             # Update content (strip system fields before storage)
             cleaned_content = strip_system_fields_from_frontmatter(update_data["content"])
             old_content = db_requirement.content or ""
-            if old_content != cleaned_content:
+            if content_has_changed(old_content, cleaned_content):
                 changes.append(("content", "markdown updated", "markdown updated"))
+
+                # CR-002: Create immutable version snapshot on content change
+                create_requirement_version(
+                    db=db,
+                    requirement=db_requirement,
+                    content=cleaned_content,
+                    user_id=user_id,
+                    change_reason="Content update",
+                )
+
+                # CR-002: Regress status to draft if approved/review requirement content changes
+                if should_regress_to_draft(db_requirement):
+                    old_status = db_requirement.status
+                    db_requirement.status = models.LifecycleStatus.DRAFT
+                    changes.append(("status", old_status.value, models.LifecycleStatus.DRAFT.value))
+                    logger.info(
+                        f"Requirement {db_requirement.human_readable_id or db_requirement.id} "
+                        f"regressed from {old_status.value} to draft due to content change"
+                    )
+
                 db_requirement.content = cleaned_content
                 # Recalculate content length and quality score
                 db_requirement.content_length = len(cleaned_content)
@@ -668,6 +704,15 @@ def update_requirement(
                     user_id=user_id,
                 )
                 raise ValueError(str(e))
+
+            # CR-002: Update current_version_id when transitioning to approved
+            if update_data["status"] == models.LifecycleStatus.APPROVED:
+                version = update_current_version_pointer(db, db_requirement)
+                if version:
+                    logger.info(
+                        f"Updated current_version_id for {db_requirement.human_readable_id or db_requirement.id} "
+                        f"to version {version.version_number} on approval"
+                    )
 
         fields_to_update = {}
         for field, value in update_data.items():

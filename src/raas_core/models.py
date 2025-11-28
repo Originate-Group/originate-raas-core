@@ -414,9 +414,10 @@ class Requirement(Base):
         index=True
     )
 
-    # Versioning (CR-010: RAAS-FEAT-097)
+    # Versioning (CR-010: RAAS-FEAT-097, CR-002)
     content_hash = Column(String(64), nullable=True)  # SHA-256 hex for conflict detection
     current_version_id = Column(UUID(as_uuid=True), ForeignKey("requirement_versions.id", ondelete="SET NULL", use_alter=True), nullable=True)
+    deployed_version_id = Column(UUID(as_uuid=True), ForeignKey("requirement_versions.id", ondelete="SET NULL", use_alter=True), nullable=True, index=True)
 
     # Multi-tenancy
     organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -436,9 +437,10 @@ class Requirement(Base):
     created_by_user = relationship("User", foreign_keys=[created_by_user_id], back_populates="created_requirements")
     updated_by_user = relationship("User", foreign_keys=[updated_by_user_id], back_populates="updated_requirements")
 
-    # Versioning relationships (CR-010: RAAS-FEAT-097)
+    # Versioning relationships (CR-010: RAAS-FEAT-097, CR-002)
     versions = relationship("RequirementVersion", back_populates="requirement", foreign_keys="RequirementVersion.requirement_id", cascade="all, delete-orphan")
     current_version = relationship("RequirementVersion", foreign_keys=[current_version_id], post_update=True)
+    deployed_version = relationship("RequirementVersion", foreign_keys=[deployed_version_id], post_update=True)
 
     # Work Item relationships (CR-010: RAAS-COMP-075)
     affecting_work_items = relationship(

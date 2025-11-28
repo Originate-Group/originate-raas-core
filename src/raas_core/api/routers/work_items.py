@@ -5,7 +5,6 @@ Types: IR (Implementation Request), CR (Change Request), BUG, TASK
 
 Lifecycle: created -> in_progress -> implemented -> validated -> deployed -> completed
 """
-import hashlib
 import logging
 from datetime import datetime
 from typing import Optional
@@ -44,17 +43,16 @@ from ...work_item_state_machine import (
     get_allowed_work_item_transitions,
     triggers_cr_merge,
 )
+from ...versioning import (
+    compute_content_hash,
+    update_deployed_version_pointer,
+)
 from ..database import get_db
 from ..dependencies import get_current_user_optional
 
 logger = logging.getLogger("raas-core.work_items")
 
 router = APIRouter(prefix="/work-items", tags=["work-items"])
-
-
-def compute_content_hash(content: str) -> str:
-    """Compute SHA-256 hash of content for conflict detection."""
-    return hashlib.sha256(content.encode('utf-8')).hexdigest()
 
 
 def resolve_requirement_id(db: Session, identifier: str) -> Optional[UUID]:
@@ -869,3 +867,129 @@ async def diff_requirement_versions(
         to_title=to_ver.title,
         changes_summary=summary,
     )
+
+
+# =============================================================================
+# CR-002: Deployment Version Tracking
+# =============================================================================
+
+
+@router.post("/requirements/{requirement_id}/mark-deployed", response_model=dict)
+async def mark_requirement_deployed(
+    requirement_id: str,
+    version_id: Optional[UUID] = Query(
+        None,
+        description="Specific version to mark as deployed (defaults to current_version)"
+    ),
+    db: Session = Depends(get_db),
+):
+    """Mark a requirement as deployed to production (CR-002: RAAS-FEAT-104).
+
+    Updates deployed_version_id to track which version is in production.
+    This is typically called when a Release deploys to production.
+
+    Args:
+        requirement_id: UUID or human-readable ID of the requirement
+        version_id: Optional specific version to mark (defaults to current_version)
+
+    Returns:
+        Dict with requirement_id, deployed_version details
+    """
+    # Resolve requirement
+    req_uuid = resolve_requirement_id(db, requirement_id)
+    if not req_uuid:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Requirement not found: {requirement_id}"
+        )
+
+    req = db.query(Requirement).filter(Requirement.id == req_uuid).first()
+    if not req:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Requirement not found: {requirement_id}"
+        )
+
+    # Update deployed version pointer
+    version = update_deployed_version_pointer(db, req, version_id)
+
+    if not version:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"No version found to mark as deployed for requirement {requirement_id}"
+        )
+
+    db.commit()
+
+    return {
+        "requirement_id": str(req.id),
+        "human_readable_id": req.human_readable_id,
+        "deployed_version_id": str(version.id),
+        "deployed_version_number": version.version_number,
+        "message": f"Marked version {version.version_number} as deployed"
+    }
+
+
+@router.post("/requirements/batch-mark-deployed", response_model=dict)
+async def batch_mark_deployed(
+    requirement_ids: list[str] = Query(
+        ...,
+        description="List of requirement UUIDs or human-readable IDs to mark as deployed"
+    ),
+    db: Session = Depends(get_db),
+):
+    """Batch mark multiple requirements as deployed (CR-002: RAAS-FEAT-104).
+
+    Typically called when a Release deploys multiple requirements to production.
+    Uses each requirement's current_version_id as the deployed version.
+
+    Args:
+        requirement_ids: List of requirement identifiers
+
+    Returns:
+        Dict with success/failure counts and details
+    """
+    results = {
+        "success": [],
+        "failed": [],
+    }
+
+    for req_id in requirement_ids:
+        req_uuid = resolve_requirement_id(db, req_id)
+        if not req_uuid:
+            results["failed"].append({
+                "id": req_id,
+                "error": "Requirement not found"
+            })
+            continue
+
+        req = db.query(Requirement).filter(Requirement.id == req_uuid).first()
+        if not req:
+            results["failed"].append({
+                "id": req_id,
+                "error": "Requirement not found"
+            })
+            continue
+
+        version = update_deployed_version_pointer(db, req)
+        if version:
+            results["success"].append({
+                "requirement_id": str(req.id),
+                "human_readable_id": req.human_readable_id,
+                "deployed_version_number": version.version_number,
+            })
+        else:
+            results["failed"].append({
+                "id": req_id,
+                "error": "No version available to mark as deployed"
+            })
+
+    db.commit()
+
+    return {
+        "total_requested": len(requirement_ids),
+        "success_count": len(results["success"]),
+        "failed_count": len(results["failed"]),
+        "success": results["success"],
+        "failed": results["failed"],
+    }
