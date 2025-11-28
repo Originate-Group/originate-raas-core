@@ -35,6 +35,8 @@ from .persona_auth import (
     Persona,
     validate_persona_authorization,
     PersonaAuthorizationError,
+    validate_content_edit_authorization,
+    ContentEditAuthorizationError,
 )
 from .versioning import (
     compute_content_hash,
@@ -482,6 +484,8 @@ def update_requirement(
     requirement_update: schemas.RequirementUpdate,
     user_id: UUID,
     persona: Optional[Persona] = None,
+    director_id: Optional[UUID] = None,
+    actor_id: Optional[UUID] = None,
 ) -> Optional[models.Requirement]:
     """
     Update a requirement.
@@ -496,6 +500,8 @@ def update_requirement(
         requirement_update: Update data
         user_id: User UUID (who is making the update)
         persona: Declared workflow persona for authorization (optional for now)
+        director_id: CR-002 (RAAS-FEAT-063) - Human user who authorized the change
+        actor_id: CR-002 (RAAS-FEAT-063) - Agent account that executed the change
 
     Returns:
         Updated requirement or None if not found
@@ -526,6 +532,19 @@ def update_requirement(
 
     # If markdown content is provided, parse it and extract metadata
     if "content" in update_data and update_data["content"]:
+        # BUG-001 Fix 2: Check if content is actually changing (not just status via frontmatter)
+        # Only enforce content-edit authorization if the actual spec content is being modified
+        new_content = update_data["content"]
+        if content_has_changed(db_requirement.content, new_content):
+            # Content is actually changing - check persona authorization
+            # Note: require_persona=False for backward compatibility during rollout
+            # TODO: Change to require_persona=True once all clients are updated
+            try:
+                validate_content_edit_authorization(persona, require_persona=False)
+            except ContentEditAuthorizationError as e:
+                logger.warning(f"Content edit authorization denied: {e}")
+                raise ValueError(str(e))
+
         try:
             metadata = extract_metadata(update_data["content"])
 
@@ -561,7 +580,7 @@ def update_requirement(
                     validate_transition(db_requirement.status, metadata["status"])
                 except StateTransitionError as e:
                     logger.warning(f"State transition blocked: {e}")
-                    # Log failed transition attempt to audit trail
+                    # Log failed transition attempt to audit trail (CR-002: director/actor)
                     _create_history_entry(
                         db=db,
                         requirement_id=requirement_id,
@@ -571,6 +590,8 @@ def update_requirement(
                         new_value=metadata["status"].value,
                         change_reason=f"BLOCKED: {str(e)}",
                         user_id=user_id,
+                        director_id=director_id,
+                        actor_id=actor_id,
                     )
                     raise ValueError(str(e))
 
@@ -588,7 +609,7 @@ def update_requirement(
                     )
                 except PersonaAuthorizationError as e:
                     logger.warning(f"Persona authorization blocked: {e}")
-                    # Log failed transition attempt to audit trail
+                    # Log failed transition attempt to audit trail (CR-002: director/actor)
                     persona_str = persona.value if persona else "none"
                     _create_history_entry(
                         db=db,
@@ -599,16 +620,32 @@ def update_requirement(
                         new_value=metadata["status"].value,
                         change_reason=f"BLOCKED (persona={persona_str}): {str(e)}",
                         user_id=user_id,
+                        director_id=director_id,
+                        actor_id=actor_id,
                     )
                     raise ValueError(str(e))
 
                 # CR-002: Update current_version_id when transitioning to approved
                 if metadata["status"] == models.LifecycleStatus.APPROVED:
+                    old_version_id = db_requirement.current_version_id
                     version = update_current_version_pointer(db, db_requirement)
                     if version:
                         logger.info(
                             f"Updated current_version_id for {db_requirement.human_readable_id or db_requirement.id} "
                             f"to version {version.version_number} on approval"
+                        )
+                        # CR-002 (RAAS-FEAT-104): Audit log for version pointer update
+                        _create_history_entry(
+                            db=db,
+                            requirement_id=requirement_id,
+                            change_type=models.ChangeType.VERSION_POINTER_CHANGED,
+                            field_name="current_version_id",
+                            old_value=str(old_version_id) if old_version_id else None,
+                            new_value=str(version.id),
+                            change_reason=f"Updated to version {version.version_number} on approval",
+                            user_id=user_id,
+                            director_id=director_id,
+                            actor_id=actor_id,
                         )
 
             # Update all fields from markdown
@@ -676,7 +713,7 @@ def update_requirement(
                 validate_transition(db_requirement.status, update_data["status"])
             except StateTransitionError as e:
                 logger.warning(f"State transition blocked: {e}")
-                # Log failed transition attempt to audit trail
+                # Log failed transition attempt to audit trail (CR-002: director/actor)
                 _create_history_entry(
                     db=db,
                     requirement_id=requirement_id,
@@ -686,6 +723,8 @@ def update_requirement(
                     new_value=update_data["status"].value,
                     change_reason=f"BLOCKED: {str(e)}",
                     user_id=user_id,
+                    director_id=director_id,
+                    actor_id=actor_id,
                 )
                 raise ValueError(str(e))
 
@@ -703,7 +742,7 @@ def update_requirement(
                 )
             except PersonaAuthorizationError as e:
                 logger.warning(f"Persona authorization blocked: {e}")
-                # Log failed transition attempt to audit trail
+                # Log failed transition attempt to audit trail (CR-002: director/actor)
                 persona_str = persona.value if persona else "none"
                 _create_history_entry(
                     db=db,
@@ -714,16 +753,32 @@ def update_requirement(
                     new_value=update_data["status"].value,
                     change_reason=f"BLOCKED (persona={persona_str}): {str(e)}",
                     user_id=user_id,
+                    director_id=director_id,
+                    actor_id=actor_id,
                 )
                 raise ValueError(str(e))
 
             # CR-002: Update current_version_id when transitioning to approved
             if update_data["status"] == models.LifecycleStatus.APPROVED:
+                old_version_id = db_requirement.current_version_id
                 version = update_current_version_pointer(db, db_requirement)
                 if version:
                     logger.info(
                         f"Updated current_version_id for {db_requirement.human_readable_id or db_requirement.id} "
                         f"to version {version.version_number} on approval"
+                    )
+                    # CR-002 (RAAS-FEAT-104): Audit log for version pointer update
+                    _create_history_entry(
+                        db=db,
+                        requirement_id=requirement_id,
+                        change_type=models.ChangeType.VERSION_POINTER_CHANGED,
+                        field_name="current_version_id",
+                        old_value=str(old_version_id) if old_version_id else None,
+                        new_value=str(version.id),
+                        change_reason=f"Updated to version {version.version_number} on approval",
+                        user_id=user_id,
+                        director_id=director_id,
+                        actor_id=actor_id,
                     )
 
         fields_to_update = {}
@@ -969,8 +1024,25 @@ def _create_history_entry(
     new_value: Optional[str] = None,
     change_reason: Optional[str] = None,
     user_id: Optional[UUID] = None,
+    director_id: Optional[UUID] = None,
+    actor_id: Optional[UUID] = None,
 ) -> None:
-    """Create a history entry for a requirement change."""
+    """Create a history entry for a requirement change.
+
+    CR-002 (RAAS-FEAT-063): Supports director/actor tracking for accountability.
+
+    Args:
+        db: Database session
+        requirement_id: UUID of the requirement
+        change_type: Type of change (created, updated, status_changed, etc.)
+        field_name: Name of the field that changed
+        old_value: Previous value
+        new_value: New value
+        change_reason: Human-readable reason for the change
+        user_id: Legacy field - user who made the change (kept for backwards compatibility)
+        director_id: Human user who authorized the change
+        actor_id: Agent account that executed the change (if applicable)
+    """
     history_entry = models.RequirementHistory(
         requirement_id=requirement_id,
         change_type=change_type,
@@ -979,6 +1051,8 @@ def _create_history_entry(
         new_value=new_value,
         change_reason=change_reason,
         changed_by_user_id=user_id,
+        director_id=director_id,
+        actor_id=actor_id,
     )
     db.add(history_entry)
     db.commit()

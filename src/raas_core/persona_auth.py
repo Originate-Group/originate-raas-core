@@ -276,3 +276,81 @@ def validate_persona_authorization(
         f"Authorized: persona={persona.value}, "
         f"transition={from_status.value}->{to_status.value}"
     )
+
+
+# BUG-001 Fix 2: Content-edit authorization
+# Personas authorized to modify requirement content (not just transition status)
+CONTENT_EDIT_PERSONAS: set[Persona] = {
+    Persona.ENTERPRISE_ARCHITECT,  # EA can do everything
+    Persona.PRODUCT_OWNER,         # PO owns the specs
+    # Note: DEVELOPER intentionally excluded - they implement, not author specs
+    # Note: TESTER intentionally excluded - they validate, not author specs
+    # Note: SCRUM_MASTER excluded - they facilitate, not author specs
+    # Note: RELEASE_MANAGER excluded - they deploy, not author specs
+}
+
+
+class ContentEditAuthorizationError(Exception):
+    """Raised when a persona is not authorized to edit requirement content."""
+
+    def __init__(
+        self,
+        message: str,
+        persona: Optional[Persona],
+        authorized_personas: list[Persona],
+    ):
+        super().__init__(message)
+        self.persona = persona
+        self.authorized_personas = authorized_personas
+
+
+def validate_content_edit_authorization(
+    persona: Optional[Persona],
+    require_persona: bool = True,
+) -> None:
+    """Validate that a persona is authorized to edit requirement content.
+
+    BUG-001 Fix 2: Developers should only transition status, not author specs.
+    This function enforces separation of concerns between implementation (developer)
+    and specification authoring (PO, EA).
+
+    Args:
+        persona: The declared persona attempting to edit content
+        require_persona: If True, missing persona raises error. If False,
+                        missing persona skips authorization check.
+
+    Raises:
+        ContentEditAuthorizationError: If persona is not authorized to edit content
+    """
+    # Handle missing persona
+    if persona is None:
+        if require_persona:
+            error_msg = (
+                f"Persona declaration required for content editing. "
+                f"Authorized personas: {', '.join(p.value for p in CONTENT_EDIT_PERSONAS)}. "
+                f"Use X-Persona header or select_agent() to declare your persona."
+            )
+            logger.warning(f"Missing persona for content edit: {error_msg}")
+            raise ContentEditAuthorizationError(
+                message=error_msg,
+                persona=None,
+                authorized_personas=list(CONTENT_EDIT_PERSONAS),
+            )
+        # If not requiring persona, allow the edit (backward compatibility)
+        return
+
+    # Check if persona is authorized
+    if persona not in CONTENT_EDIT_PERSONAS:
+        error_msg = (
+            f"Persona '{persona.value}' is not authorized to edit requirement content. "
+            f"Only {', '.join(p.value for p in CONTENT_EDIT_PERSONAS)} can author specifications. "
+            f"Developers should use status transitions to mark work complete, not modify spec content."
+        )
+        logger.warning(f"Unauthorized content edit: {error_msg}")
+        raise ContentEditAuthorizationError(
+            message=error_msg,
+            persona=persona,
+            authorized_personas=list(CONTENT_EDIT_PERSONAS),
+        )
+
+    logger.debug(f"Content edit authorized for persona={persona.value}")

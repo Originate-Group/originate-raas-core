@@ -584,13 +584,15 @@ async def handle_select_agent(
             if response.status_code == 403:
                 error_data = response.json().get("detail", {})
                 error_msg = error_data.get("message", "Not authorized to use this agent")
+                # BUG-001 Fix 3: Clear stale agent state on authorization denial
+                # Don't preserve previous agent - explicit denial means no agent
                 return [TextContent(
                     type="text",
                     text=f"Authorization denied: {error_msg}\n\n"
                          f"You are not authorized to act as '{agent_email}' in this organization.\n"
                          f"Contact an organization owner to create an agent-director mapping.\n\n"
                          f"Use list_my_agents() to see which agents you can use."
-                )], current_scope
+                )], {"_agent": None, "_persona": None}  # Clear agent on denial
             elif response.status_code == 404:
                 return [TextContent(
                     type="text",
@@ -601,11 +603,25 @@ async def handle_select_agent(
                 result = response.json()
                 auth_type = result.get("authorization_type")
             else:
-                # For other errors, log but continue (graceful degradation)
-                logger.warning(f"Authorization check failed with status {response.status_code}, proceeding anyway")
+                # BUG-001 Fix 1: Fail closed on unexpected status codes
+                # Security principle: authorization must fail closed, not open
+                logger.error(f"Authorization check failed with unexpected status {response.status_code}")
+                return [TextContent(
+                    type="text",
+                    text=f"Authorization check failed (status {response.status_code}).\n\n"
+                         f"Cannot proceed without confirming authorization.\n"
+                         f"Please try again or contact an administrator."
+                )], {"_agent": None, "_persona": None}  # Explicitly clear agent state
         except Exception as e:
-            # Log error but don't block - graceful degradation for backward compatibility
-            logger.warning(f"Authorization check failed: {e}, proceeding anyway")
+            # BUG-001 Fix 1: Fail closed on exception
+            # Security principle: authorization must fail closed, not open
+            logger.error(f"Authorization check failed with exception: {e}")
+            return [TextContent(
+                type="text",
+                text=f"Authorization check failed: {e}\n\n"
+                     f"Cannot proceed without confirming authorization.\n"
+                     f"Please try again or contact an administrator."
+            )], {"_agent": None, "_persona": None}  # Explicitly clear agent state
 
     role = AGENT_ROLE_MAP.get(agent_email, "unknown")
     logger.info(f"Set agent to: {agent_email} (role: {role}, auth_type: {auth_type})")
@@ -2246,3 +2262,92 @@ async def handle_batch_mark_requirements_deployed(
         text += f"\n\nErrors:\n" + "\n".join([f"- {e}" for e in result['errors']])
 
     return [TextContent(type="text", text=text)], current_scope
+
+
+# =============================================================================
+# CR-002 (RAAS-FEAT-104): Work Item Diffs and Conflict Detection
+# =============================================================================
+
+
+async def handle_get_work_item_diffs(
+    arguments: dict,
+    client: httpx.AsyncClient,
+    current_scope: Optional[dict] = None
+) -> tuple[list[TextContent], Optional[dict]]:
+    """Get diffs for all affected requirements in a Work Item."""
+    work_item_id = arguments["work_item_id"]
+
+    response = await client.get(f"/work-items/{work_item_id}/diffs")
+    response.raise_for_status()
+    result = response.json()
+    logger.info(f"Retrieved diffs for Work Item {work_item_id}")
+
+    # Format response
+    text_lines = [
+        f"## Work Item Diffs: {result.get('human_readable_id', work_item_id)}",
+        f"Type: {result.get('work_item_type', 'unknown')}",
+        f"Total affected: {result.get('total_affected', 0)}",
+        f"With changes: {result.get('total_with_changes', 0)}",
+        "",
+    ]
+
+    for req in result.get('affected_requirements', []):
+        hrid = req.get('human_readable_id', str(req.get('requirement_id', 'unknown')))
+        title = req.get('title', 'Untitled')
+        has_changes = req.get('has_changes', False)
+        changes_summary = req.get('changes_summary', '')
+
+        status_marker = "**CHANGED**" if has_changes else "no changes"
+        text_lines.append(f"### [{hrid}] {title}")
+        text_lines.append(f"Status: {status_marker}")
+        text_lines.append(f"Current version: {req.get('current_version_number', 'N/A')}")
+        text_lines.append(f"Latest version: {req.get('latest_version_number', 'N/A')}")
+        if changes_summary:
+            text_lines.append(f"Summary: {changes_summary}")
+        text_lines.append("")
+
+    return [TextContent(type="text", text="\n".join(text_lines))], current_scope
+
+
+async def handle_check_work_item_conflicts(
+    arguments: dict,
+    client: httpx.AsyncClient,
+    current_scope: Optional[dict] = None
+) -> tuple[list[TextContent], Optional[dict]]:
+    """Check for conflicts in a Work Item before approval/merge."""
+    work_item_id = arguments["work_item_id"]
+
+    response = await client.get(f"/work-items/{work_item_id}/check-conflicts")
+    response.raise_for_status()
+    result = response.json()
+    logger.info(f"Checked conflicts for Work Item {work_item_id}")
+
+    # Format response
+    has_conflicts = result.get('has_conflicts', False)
+    conflict_count = result.get('conflict_count', 0)
+
+    if has_conflicts:
+        header = f"## CONFLICTS DETECTED: {result.get('human_readable_id', work_item_id)}"
+        status_msg = f"**{conflict_count} requirement(s) have conflicts**"
+    else:
+        header = f"## No Conflicts: {result.get('human_readable_id', work_item_id)}"
+        status_msg = "All affected requirements are up-to-date"
+
+    text_lines = [header, status_msg, ""]
+
+    for req in result.get('affected_requirements', []):
+        hrid = req.get('human_readable_id', str(req.get('requirement_id', 'unknown')))
+        title = req.get('title', 'Untitled')
+        has_conflict = req.get('has_conflict', False)
+        conflict_reason = req.get('conflict_reason', '')
+
+        if has_conflict:
+            text_lines.append(f"### CONFLICT: [{hrid}] {title}")
+            text_lines.append(f"Reason: {conflict_reason}")
+        else:
+            text_lines.append(f"### OK: [{hrid}] {title}")
+            if conflict_reason:
+                text_lines.append(f"Note: {conflict_reason}")
+        text_lines.append("")
+
+    return [TextContent(type="text", text="\n".join(text_lines))], current_scope
