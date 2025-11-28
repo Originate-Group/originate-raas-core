@@ -1,10 +1,16 @@
 """State machine validation for requirement lifecycle status transitions.
 
-Enforces valid status transitions to maintain workflow integrity:
-- Requirements must follow approval gates (draft → review → approved)
-- Prevents invalid progressions that skip review steps
-- Supports controlled back-transitions for flexibility
-- Provides clear error messages for blocked transitions
+CR-004 Phase 4 (RAAS-COMP-047): Simplified to 4-state model.
+Requirements are SPECIFICATIONS - implementation status belongs on Work Items.
+
+Valid states: draft → review → approved → deprecated
+- draft: Initial state, not yet ready for review
+- review: Submitted for stakeholder review
+- approved: Approved specification, ready for implementation
+- deprecated: Terminal state for soft retirement
+
+Implementation lifecycle (in_progress, implemented, validated, deployed)
+is now tracked on Work Items, not Requirements.
 """
 import logging
 from typing import Optional
@@ -30,7 +36,7 @@ class StateTransitionError(Exception):
         self.allowed_transitions = allowed_transitions
 
 
-# State machine transition matrix
+# State machine transition matrix (CR-004 Phase 4: 4-state model)
 # Maps current status → list of allowed next statuses
 TRANSITION_MATRIX: dict[LifecycleStatus, list[LifecycleStatus]] = {
     LifecycleStatus.DRAFT: [
@@ -46,36 +52,11 @@ TRANSITION_MATRIX: dict[LifecycleStatus, list[LifecycleStatus]] = {
     LifecycleStatus.APPROVED: [
         LifecycleStatus.APPROVED,   # No-op (allowed)
         LifecycleStatus.DRAFT,      # Back: reopen for major changes
-        LifecycleStatus.IN_PROGRESS,  # Forward: start implementation
+        LifecycleStatus.REVIEW,     # Back: needs re-review after changes
         LifecycleStatus.DEPRECATED, # Terminal: soft retirement (RAAS-FEAT-080)
     ],
-    LifecycleStatus.IN_PROGRESS: [
-        LifecycleStatus.IN_PROGRESS,  # No-op (allowed)
-        LifecycleStatus.APPROVED,     # Back: blocked, back to backlog
-        LifecycleStatus.IMPLEMENTED,  # Forward: implementation complete
-        LifecycleStatus.DEPRECATED,   # Terminal: soft retirement (RAAS-FEAT-080)
-    ],
-    LifecycleStatus.IMPLEMENTED: [
-        LifecycleStatus.IMPLEMENTED,  # No-op (allowed)
-        LifecycleStatus.IN_PROGRESS,  # Back: found issues, rework needed
-        LifecycleStatus.VALIDATED,    # Forward: testing/validation complete
-        LifecycleStatus.DEPRECATED,   # Terminal: soft retirement (RAAS-FEAT-080)
-    ],
-    LifecycleStatus.VALIDATED: [
-        LifecycleStatus.VALIDATED,    # No-op (allowed)
-        LifecycleStatus.IMPLEMENTED,  # Back: validation failed, fix needed
-        LifecycleStatus.DEPLOYED,     # Forward: deployed to production
-        LifecycleStatus.DEPRECATED,   # Terminal: soft retirement (RAAS-FEAT-080)
-    ],
-    LifecycleStatus.DEPLOYED: [
-        LifecycleStatus.DEPLOYED,     # No-op (allowed)
-        LifecycleStatus.DEPRECATED,   # Terminal: soft retirement (RAAS-FEAT-080)
-        # Note: Cannot transition to other statuses from deployed
-        # Deployed requirements are immutable records
-        # New work requires creating child requirements
-    ],
     LifecycleStatus.DEPRECATED: [
-        LifecycleStatus.DEPRECATED,   # No-op (allowed)
+        LifecycleStatus.DEPRECATED, # No-op (allowed)
         # Note: DEPRECATED is terminal - cannot transition out (RAAS-FEAT-080)
         # Use deprecated for soft retirement instead of hard deletion
         # Deprecated requirements are excluded from default queries
@@ -134,10 +115,6 @@ def validate_transition(
             error_msg += " Requirements must be reviewed before approval. Transition to 'review' first."
         elif current_status == LifecycleStatus.DRAFT and new_status == LifecycleStatus.DEPRECATED:
             error_msg += " Draft requirements cannot be deprecated. Submit for review first, or delete if unwanted."
-        elif current_status == LifecycleStatus.DRAFT and new_status not in [LifecycleStatus.REVIEW]:
-            error_msg += " Requirements in draft must go through review before implementation."
-        elif current_status == LifecycleStatus.DEPLOYED:
-            error_msg += " Deployed requirements are immutable. Create a new child requirement for additional work."
         elif current_status == LifecycleStatus.DEPRECATED:
             error_msg += " Deprecated requirements are terminal and cannot be reactivated. Create a new requirement instead."
 
@@ -169,14 +146,10 @@ def get_allowed_transitions(current_status: LifecycleStatus) -> list[LifecycleSt
 
 # Status sort order for list queries
 # Lower number = higher priority (shown first)
-# Reflects workflow priority: active work first, backlog last
+# CR-004 Phase 4: Simplified for 4-state model
 STATUS_SORT_ORDER: dict[LifecycleStatus, int] = {
-    LifecycleStatus.IN_PROGRESS: 1,   # Actively working - highest priority
-    LifecycleStatus.IMPLEMENTED: 2,   # Needs validation
-    LifecycleStatus.VALIDATED: 3,     # Ready for deployment
-    LifecycleStatus.APPROVED: 4,      # Ready to start
-    LifecycleStatus.REVIEW: 5,        # Needs review decision
-    LifecycleStatus.DRAFT: 6,         # Backlog - lowest priority
-    LifecycleStatus.DEPLOYED: 7,      # Done (usually excluded from lists)
-    LifecycleStatus.DEPRECATED: 8,    # Retired - excluded from default queries (RAAS-FEAT-080)
+    LifecycleStatus.REVIEW: 1,        # Needs review decision - action required
+    LifecycleStatus.APPROVED: 2,      # Ready for implementation
+    LifecycleStatus.DRAFT: 3,         # Backlog
+    LifecycleStatus.DEPRECATED: 4,    # Retired - excluded from default queries
 }

@@ -423,9 +423,10 @@ def get_requirements(
         # Cast the tags list to PostgreSQL text[] array type to match the column type
         query = query.filter(models.Requirement.tags.op('@>')(cast(tags, ARRAY(Text))))
 
-    # Exclude deployed items by default unless explicitly requested
+    # CR-004 Phase 4: DEPLOYED status removed. Filter by deployed_version_id instead.
+    # include_deployed=False excludes requirements that have been deployed to production
     if not include_deployed:
-        query = query.filter(models.Requirement.status != models.LifecycleStatus.DEPLOYED)
+        query = query.filter(models.Requirement.deployed_version_id.is_(None))
 
     # Exclude deprecated items by default unless explicitly requested (RAAS-FEAT-080)
     if not include_deprecated:
@@ -466,14 +467,9 @@ def get_requirements(
                 .all()
             )
 
-            # Check if ready to implement (all dependencies have code complete or no dependencies)
-            # Code complete = implemented, validated, or deployed
-            CODE_COMPLETE_STATUSES = {
-                models.LifecycleStatus.IMPLEMENTED,
-                models.LifecycleStatus.VALIDATED,
-                models.LifecycleStatus.DEPLOYED,
-            }
-            is_ready = not deps or all(dep.status in CODE_COMPLETE_STATUSES for dep in deps)
+            # Check if ready to implement (all dependencies are code-complete or no dependencies)
+            # CR-004 Phase 4: Code-complete = deployed_version_id is set
+            is_ready = not deps or all(dep.deployed_version_id is not None for dep in deps)
 
             if ready_to_implement == is_ready:
                 filtered_requirements.append(req)
@@ -575,12 +571,9 @@ def update_requirement(
 
             # Validate status transition if status is changing
             if "status" in metadata and metadata["status"] != db_requirement.status:
-                # Check if transitioning to deployed and dependencies are met
-                if metadata["status"] == models.LifecycleStatus.DEPLOYED:
-                    can_deploy, error_msg = can_transition_to_deployed(db, requirement_id)
-                    if not can_deploy:
-                        logger.warning(f"Deployment blocked: {error_msg}")
-                        raise ValueError(error_msg)
+                # CR-004 Phase 4: DEPLOYED status removed from requirements.
+                # Deployment tracking is via deployed_version_id, not status.
+                # State machine will reject any invalid status transitions.
 
                 try:
                     validate_transition(db_requirement.status, metadata["status"])
@@ -708,12 +701,9 @@ def update_requirement(
 
         # Validate status transition BEFORE making any changes
         if "status" in update_data and update_data["status"] != db_requirement.status:
-            # Check if transitioning to deployed and dependencies are met
-            if update_data["status"] == models.LifecycleStatus.DEPLOYED:
-                can_deploy, error_msg = can_transition_to_deployed(db, requirement_id)
-                if not can_deploy:
-                    logger.warning(f"Deployment blocked: {error_msg}")
-                    raise ValueError(error_msg)
+            # CR-004 Phase 4: DEPLOYED status removed from requirements.
+            # Deployment tracking is via deployed_version_id, not status.
+            # State machine will reject any invalid status transitions.
 
             try:
                 validate_transition(db_requirement.status, update_data["status"])

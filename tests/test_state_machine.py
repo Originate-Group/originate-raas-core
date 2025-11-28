@@ -1,4 +1,11 @@
-"""Tests for state machine validation."""
+"""Tests for state machine validation.
+
+CR-004 Phase 4: Requirements use simplified 4-state model:
+- draft → review → approved → deprecated
+
+Implementation states (in_progress, implemented, validated, deployed) are now
+tracked on Work Items, not Requirements.
+"""
 import pytest
 from raas_core.models import LifecycleStatus
 from raas_core.state_machine import (
@@ -10,7 +17,7 @@ from raas_core.state_machine import (
 
 
 class TestStateTransitions:
-    """Test state machine transition validation."""
+    """Test state machine transition validation (CR-004 Phase 4: 4-state model)."""
 
     def test_valid_forward_transitions(self):
         """Test that valid forward transitions are allowed."""
@@ -22,22 +29,6 @@ class TestStateTransitions:
         assert is_transition_valid(LifecycleStatus.REVIEW, LifecycleStatus.APPROVED)
         validate_transition(LifecycleStatus.REVIEW, LifecycleStatus.APPROVED)
 
-        # Approved → In Progress
-        assert is_transition_valid(LifecycleStatus.APPROVED, LifecycleStatus.IN_PROGRESS)
-        validate_transition(LifecycleStatus.APPROVED, LifecycleStatus.IN_PROGRESS)
-
-        # In Progress → Implemented
-        assert is_transition_valid(LifecycleStatus.IN_PROGRESS, LifecycleStatus.IMPLEMENTED)
-        validate_transition(LifecycleStatus.IN_PROGRESS, LifecycleStatus.IMPLEMENTED)
-
-        # Implemented → Validated
-        assert is_transition_valid(LifecycleStatus.IMPLEMENTED, LifecycleStatus.VALIDATED)
-        validate_transition(LifecycleStatus.IMPLEMENTED, LifecycleStatus.VALIDATED)
-
-        # Validated → Deployed
-        assert is_transition_valid(LifecycleStatus.VALIDATED, LifecycleStatus.DEPLOYED)
-        validate_transition(LifecycleStatus.VALIDATED, LifecycleStatus.DEPLOYED)
-
     def test_valid_back_transitions(self):
         """Test that valid back-transitions are allowed."""
         # Review → Draft (needs more work)
@@ -48,17 +39,19 @@ class TestStateTransitions:
         assert is_transition_valid(LifecycleStatus.APPROVED, LifecycleStatus.DRAFT)
         validate_transition(LifecycleStatus.APPROVED, LifecycleStatus.DRAFT)
 
-        # In Progress → Approved (blocked)
-        assert is_transition_valid(LifecycleStatus.IN_PROGRESS, LifecycleStatus.APPROVED)
-        validate_transition(LifecycleStatus.IN_PROGRESS, LifecycleStatus.APPROVED)
+        # Approved → Review (needs re-review after changes)
+        assert is_transition_valid(LifecycleStatus.APPROVED, LifecycleStatus.REVIEW)
+        validate_transition(LifecycleStatus.APPROVED, LifecycleStatus.REVIEW)
 
-        # Implemented → In Progress (found issues)
-        assert is_transition_valid(LifecycleStatus.IMPLEMENTED, LifecycleStatus.IN_PROGRESS)
-        validate_transition(LifecycleStatus.IMPLEMENTED, LifecycleStatus.IN_PROGRESS)
+    def test_deprecated_transitions(self):
+        """Test deprecated (soft retirement) transitions."""
+        # Review → Deprecated (RAAS-FEAT-080)
+        assert is_transition_valid(LifecycleStatus.REVIEW, LifecycleStatus.DEPRECATED)
+        validate_transition(LifecycleStatus.REVIEW, LifecycleStatus.DEPRECATED)
 
-        # Validated → Implemented (validation failed)
-        assert is_transition_valid(LifecycleStatus.VALIDATED, LifecycleStatus.IMPLEMENTED)
-        validate_transition(LifecycleStatus.VALIDATED, LifecycleStatus.IMPLEMENTED)
+        # Approved → Deprecated (RAAS-FEAT-080)
+        assert is_transition_valid(LifecycleStatus.APPROVED, LifecycleStatus.DEPRECATED)
+        validate_transition(LifecycleStatus.APPROVED, LifecycleStatus.DEPRECATED)
 
     def test_noop_transitions_allowed(self):
         """Test that no-op transitions (same status) are always allowed."""
@@ -78,60 +71,69 @@ class TestStateTransitions:
         assert error.requested_status == LifecycleStatus.APPROVED
         assert "must be reviewed before approval" in str(error).lower()
 
-    def test_invalid_draft_to_implementation(self):
-        """Test that jumping from Draft to implementation states is blocked."""
-        invalid_transitions = [
-            LifecycleStatus.IN_PROGRESS,
-            LifecycleStatus.IMPLEMENTED,
-            LifecycleStatus.VALIDATED,
-            LifecycleStatus.DEPLOYED
-        ]
+    def test_draft_cannot_be_deprecated(self):
+        """Test that draft requirements cannot be deprecated directly."""
+        assert not is_transition_valid(LifecycleStatus.DRAFT, LifecycleStatus.DEPRECATED)
 
-        for target_status in invalid_transitions:
-            assert not is_transition_valid(LifecycleStatus.DRAFT, target_status)
+        with pytest.raises(StateTransitionError):
+            validate_transition(LifecycleStatus.DRAFT, LifecycleStatus.DEPRECATED)
 
-            with pytest.raises(StateTransitionError):
-                validate_transition(LifecycleStatus.DRAFT, target_status)
+    def test_deprecated_is_terminal(self):
+        """Test that deprecated status cannot transition to other statuses."""
+        # Only transition from deprecated to deprecated (no-op) is allowed
+        assert is_transition_valid(LifecycleStatus.DEPRECATED, LifecycleStatus.DEPRECATED)
 
-    def test_deployed_is_immutable(self):
-        """Test that deployed status cannot be changed."""
-        # Only transition from deployed to deployed (no-op) is allowed
-        assert is_transition_valid(LifecycleStatus.DEPLOYED, LifecycleStatus.DEPLOYED)
-
-        # All other transitions from deployed should be blocked
+        # All other transitions from deprecated should be blocked
         for status in LifecycleStatus:
-            if status != LifecycleStatus.DEPLOYED:
-                assert not is_transition_valid(LifecycleStatus.DEPLOYED, status)
+            if status != LifecycleStatus.DEPRECATED:
+                assert not is_transition_valid(LifecycleStatus.DEPRECATED, status)
 
                 with pytest.raises(StateTransitionError) as exc_info:
-                    validate_transition(LifecycleStatus.DEPLOYED, status)
+                    validate_transition(LifecycleStatus.DEPRECATED, status)
 
-                assert "immutable" in str(exc_info.value).lower()
+                assert "terminal" in str(exc_info.value).lower() or "cannot" in str(exc_info.value).lower()
 
     def test_get_allowed_transitions(self):
         """Test getting allowed transitions from each state."""
         # Draft can go to Review (no-op excluded)
         assert get_allowed_transitions(LifecycleStatus.DRAFT) == [LifecycleStatus.REVIEW]
 
-        # Review can go to Draft or Approved (no-op excluded)
+        # Review can go to Draft, Approved, or Deprecated (no-op excluded)
         allowed = get_allowed_transitions(LifecycleStatus.REVIEW)
-        assert set(allowed) == {LifecycleStatus.DRAFT, LifecycleStatus.APPROVED}
+        assert set(allowed) == {LifecycleStatus.DRAFT, LifecycleStatus.APPROVED, LifecycleStatus.DEPRECATED}
 
-        # Deployed has no allowed transitions (no-op excluded)
-        assert get_allowed_transitions(LifecycleStatus.DEPLOYED) == []
+        # Approved can go to Draft, Review, or Deprecated (no-op excluded)
+        allowed = get_allowed_transitions(LifecycleStatus.APPROVED)
+        assert set(allowed) == {LifecycleStatus.DRAFT, LifecycleStatus.REVIEW, LifecycleStatus.DEPRECATED}
+
+        # Deprecated has no allowed transitions (terminal state, no-op excluded)
+        assert get_allowed_transitions(LifecycleStatus.DEPRECATED) == []
 
     def test_state_transition_error_attributes(self):
         """Test that StateTransitionError contains all required attributes."""
         with pytest.raises(StateTransitionError) as exc_info:
-            validate_transition(LifecycleStatus.DRAFT, LifecycleStatus.IMPLEMENTED)
+            validate_transition(LifecycleStatus.DRAFT, LifecycleStatus.APPROVED)
 
         error = exc_info.value
         assert hasattr(error, 'current_status')
         assert hasattr(error, 'requested_status')
         assert hasattr(error, 'allowed_transitions')
         assert error.current_status == LifecycleStatus.DRAFT
-        assert error.requested_status == LifecycleStatus.IMPLEMENTED
+        assert error.requested_status == LifecycleStatus.APPROVED
         assert isinstance(error.allowed_transitions, list)
+
+
+class TestFourStateModelEnforcement:
+    """Test that only the 4-state model is enforced (CR-004 Phase 4)."""
+
+    def test_only_four_states_exist(self):
+        """Verify only 4 states exist in the enum."""
+        expected_states = {'draft', 'review', 'approved', 'deprecated'}
+        actual_states = {status.value for status in LifecycleStatus}
+        assert actual_states == expected_states, (
+            f"Expected 4 states {expected_states}, but found {actual_states}. "
+            "CR-004 Phase 4 requires only draft/review/approved/deprecated."
+        )
 
 
 if __name__ == "__main__":

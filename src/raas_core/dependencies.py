@@ -247,7 +247,11 @@ def get_requirements_ready_to_implement(
     organization_ids: list[UUID]
 ) -> list[models.Requirement]:
     """
-    Get requirements that are ready to implement (all dependencies are deployed).
+    Get requirements that are ready to implement (all dependencies are code-complete).
+
+    CR-004 Phase 4: "Code-complete" means deployed_version_id is set, indicating
+    a version has been deployed to production. Requirements are specifications;
+    implementation status is tracked on Work Items.
 
     Args:
         db: Database session
@@ -255,13 +259,15 @@ def get_requirements_ready_to_implement(
         organization_ids: Organization IDs for access control
 
     Returns:
-        List of requirements with no unmet dependencies
+        List of approved requirements with no unmet dependencies
     """
-    # Get all requirements with their dependencies
+    # Get approved requirements (ready for implementation)
     query = db.query(models.Requirement).filter(
         models.Requirement.project_id == project_id,
         models.Requirement.organization_id.in_(organization_ids),
-        models.Requirement.status != models.LifecycleStatus.DEPLOYED
+        models.Requirement.status == models.LifecycleStatus.APPROVED,
+        # Exclude requirements that already have a deployed version
+        models.Requirement.deployed_version_id.is_(None)
     )
 
     ready_requirements = []
@@ -278,8 +284,8 @@ def get_requirements_ready_to_implement(
             .all()
         )
 
-        # Check if all dependencies are deployed
-        if not deps or all(dep.status == models.LifecycleStatus.DEPLOYED for dep in deps):
+        # Check if all dependencies are code-complete (have deployed_version_id set)
+        if not deps or all(dep.deployed_version_id is not None for dep in deps):
             ready_requirements.append(req)
 
     return ready_requirements
@@ -310,14 +316,16 @@ def get_requirements_blocked_by(
     )
 
 
-def can_transition_to_deployed(
+def can_mark_as_deployed(
     db: Session,
     requirement_id: UUID
 ) -> tuple[bool, Optional[str]]:
     """
-    Check if a requirement can transition to deployed status.
+    Check if a requirement can be marked as deployed (deployed_version_id can be set).
 
-    A requirement can only be deployed if all its dependencies are already deployed.
+    CR-004 Phase 4: Requirements no longer have a DEPLOYED status. Instead,
+    deployment is tracked via deployed_version_id. A requirement can only be
+    marked as deployed if all its dependencies already have deployed_version_id set.
 
     Args:
         db: Database session
@@ -325,7 +333,7 @@ def can_transition_to_deployed(
 
     Returns:
         Tuple of (can_deploy, error_message)
-        - can_deploy: True if all dependencies are deployed
+        - can_deploy: True if all dependencies are deployed (have deployed_version_id)
         - error_message: Error message if cannot deploy, None otherwise
     """
     # Get direct dependencies
@@ -339,11 +347,28 @@ def can_transition_to_deployed(
         .all()
     )
 
-    # Check if any dependencies are not deployed
-    unmet_deps = [dep for dep in deps if dep.status != models.LifecycleStatus.DEPLOYED]
+    # Check if any dependencies don't have deployed_version_id set
+    unmet_deps = [dep for dep in deps if dep.deployed_version_id is None]
 
     if unmet_deps:
-        dep_list = ", ".join(f"{dep.human_readable_id or str(dep.id)} ({dep.status.value})" for dep in unmet_deps)
-        return False, f"Cannot deploy: the following dependencies are not deployed: {dep_list}"
+        dep_list = ", ".join(
+            f"{dep.human_readable_id or str(dep.id)} (not deployed)"
+            for dep in unmet_deps
+        )
+        return False, f"Cannot mark as deployed: the following dependencies are not deployed: {dep_list}"
 
     return True, None
+
+
+# Legacy alias for backwards compatibility
+def can_transition_to_deployed(
+    db: Session,
+    requirement_id: UUID
+) -> tuple[bool, Optional[str]]:
+    """
+    DEPRECATED: Use can_mark_as_deployed instead.
+
+    CR-004 Phase 4 removed DEPLOYED from requirement statuses.
+    This function now delegates to can_mark_as_deployed.
+    """
+    return can_mark_as_deployed(db, requirement_id)

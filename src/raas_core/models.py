@@ -76,15 +76,24 @@ class RequirementType(str, enum.Enum):
 
 
 class LifecycleStatus(str, enum.Enum):
-    """Lifecycle status enum."""
+    """Lifecycle status enum for requirements.
+
+    CR-004 Phase 4 (RAAS-COMP-047): Simplified from 8 states to 4 states.
+    Requirements are SPECIFICATIONS - implementation status belongs on Work Items.
+
+    Valid states:
+    - draft: Initial state, not yet ready for review
+    - review: Submitted for stakeholder review
+    - approved: Approved specification, ready for implementation
+    - deprecated: Terminal state for soft retirement (RAAS-FEAT-080)
+
+    Removed states (now tracked on Work Items):
+    - in_progress, implemented, validated, deployed
+    """
 
     DRAFT = "draft"
     REVIEW = "review"
     APPROVED = "approved"
-    IN_PROGRESS = "in_progress"
-    IMPLEMENTED = "implemented"
-    VALIDATED = "validated"
-    DEPLOYED = "deployed"
     DEPRECATED = "deprecated"  # Terminal state for soft retirement (RAAS-FEAT-080)
 
 

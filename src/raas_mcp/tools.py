@@ -584,13 +584,14 @@ def get_tools() -> list[Tool]:
                        "\n• Ensures explicit agent declaration before transitions"
                        "\n• Agent roles (via RBAC) determine allowed transitions"
                        "\n\nAGENT ACCOUNTS (use @tarka.internal domain):"
-                       "\n• developer@tarka.internal - draft→review, in_progress→implemented"
-                       "\n• tester@tarka.internal - implemented→validated (prevents self-validation)"
-                       "\n• release_manager@tarka.internal - validated→deployed"
+                       "\n• developer@tarka.internal - draft→review (submit for review)"
                        "\n• ea@tarka.internal - Enterprise Architect (all transitions)"
                        "\n• code@tarka.internal - Claude Code (development tasks)"
                        "\n• ba@tarka.internal - Business Analyst"
                        "\n• csa@tarka.internal - Client Success Agent"
+                       "\n\nNOTE: CR-004 Phase 4 simplified requirement lifecycle to 4 states:"
+                       "\n• draft → review → approved → deprecated"
+                       "\n• Implementation status (in_progress, implemented, validated, deployed) is now tracked on Work Items"
                        "\n\nCOMMON PATTERNS:"
                        "\n• Start of session: select_agent(agent_email='developer@tarka.internal') → work normally"
                        "\n• Switch roles: select_agent(agent_email='tester@tarka.internal') → now authorized for validation"
@@ -803,8 +804,8 @@ def get_tools() -> list[Tool]:
                     },
                     "status": {
                         "type": "string",
-                        "enum": ["draft", "review", "approved", "in_progress", "implemented", "validated", "deployed", "deprecated"],
-                        "description": "Filter by lifecycle status"
+                        "enum": ["draft", "review", "approved", "deprecated"],
+                        "description": "Filter by lifecycle status (CR-004 Phase 4: 4-state model)"
                     },
                     "parent_id": {
                         "type": "string",
@@ -826,7 +827,7 @@ def get_tools() -> list[Tool]:
                     "ready_to_implement": {
                         "type": "boolean",
                         "description": "Filter for requirements ready to implement (true = all dependencies code-complete, false = has unmet dependencies). "
-                                     "Code-complete means implemented, validated, or deployed. "
+                                     "Code-complete means deployed_version_id is set (CR-004 Phase 4). "
                                      "Use this to find 'next available work' - requirements that are unblocked and can be started immediately."
                     },
                     "blocked_by": {
@@ -946,8 +947,8 @@ def get_tools() -> list[Tool]:
                     },
                     "status": {
                         "type": "string",
-                        "enum": ["draft", "review", "approved", "in_progress", "implemented", "validated", "deployed"],
-                        "description": "DEPRECATED: Use content field or transition_status() instead."
+                        "enum": ["draft", "review", "approved", "deprecated"],
+                        "description": "DEPRECATED: Use content field or transition_status() instead. CR-004 Phase 4: 4-state model."
                     },
                     "tags": {
                         "type": "array",
@@ -1030,24 +1031,22 @@ def get_tools() -> list[Tool]:
                        "Accepts both UUID and human-readable ID. "
                        "\n\nPREREQUISITE: You MUST call select_persona() first to set your workflow persona. "
                        "Without a persona set, this tool will return 403 Forbidden."
-                       "\n\nSTATUS WORKFLOW (enforced state machine):"
-                       "\n• Forward: draft → review → approved → in_progress → implemented → validated → deployed"
-                       "\n• Can move backward 1+ steps (e.g., review → draft, approved → draft)"
+                       "\n\nSTATUS WORKFLOW (CR-004 Phase 4: 4-state model):"
+                       "\n• Forward: draft → review → approved"
+                       "\n• Back: approved → review → draft (for rework)"
                        "\n• CANNOT skip steps (e.g., draft → approved is blocked, must go draft → review → approved)"
-                       "\n• deployed is terminal (cannot transition out, create new requirement instead)"
-                       "\n• deprecated is terminal (soft retirement - can transition TO deprecated from any status except draft)"
+                       "\n• deprecated is terminal (soft retirement - can transition TO deprecated from review/approved)"
                        "\n• Same-status transitions allowed (no-op)"
+                       "\n\nIMPORTANT: Implementation states (in_progress, implemented, validated, deployed) are now"
+                       "\ntracked on Work Items, NOT Requirements. Requirements are specifications only."
                        "\n\nPERSONA AUTHORIZATION:"
                        "\n• Different transitions require different personas (set via select_persona)"
-                       "\n• Developer: draft→review, in_progress→implemented"
-                       "\n• Tester: implemented→validated (cannot self-validate!)"
-                       "\n• Release Manager: validated→deployed"
-                       "\n• Product Owner: review→approved"
+                       "\n• Developer: draft→review"
+                       "\n• Product Owner: review→approved, approved→deprecated"
+                       "\n• Enterprise Architect: all transitions"
                        "\n\nCOMMON PATTERNS:"
                        "\n• select_persona(persona='developer') → transition_status(..., new_status='review')"
                        "\n• select_persona(persona='product_owner') → transition_status(..., new_status='approved')"
-                       "\n• select_persona(persona='tester') → transition_status(..., new_status='validated')"
-                       "\n• select_persona(persona='release_manager') → transition_status(..., new_status='deployed')"
                        "\n\nWHEN TO USE:"
                        "\n• Use this tool for simple status-only changes (no other modifications)"
                        "\n• Use update_requirement() if you need to change content, dependencies, or other fields"
@@ -1056,12 +1055,13 @@ def get_tools() -> list[Tool]:
                        "\n• select_persona() - MUST be called first to set persona"
                        "\n• get_persona() - check current persona before transitioning"
                        "\n• update_requirement() - for full updates including status"
+                       "\n• Work Item tools for implementation tracking"
                        "\n\nERRORS:"
                        "\n• 403: No persona set (call select_persona first)"
                        "\n• 403: Persona not authorized for this transition"
                        "\n• 404: Requirement not found"
                        "\n• 400: Invalid state transition (e.g., draft → approved without review)"
-                       "\n• 400: Invalid status value (not one of 8 valid statuses)",
+                       "\n• 400: Invalid status value (not one of 4 valid statuses)",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -1071,8 +1071,8 @@ def get_tools() -> list[Tool]:
                     },
                     "new_status": {
                         "type": "string",
-                        "enum": ["draft", "review", "approved", "in_progress", "implemented", "validated", "deployed", "deprecated"],
-                        "description": "Target status"
+                        "enum": ["draft", "review", "approved", "deprecated"],
+                        "description": "Target status (CR-004 Phase 4: 4-state model)"
                     }
                 },
                 "required": ["requirement_id", "new_status"]

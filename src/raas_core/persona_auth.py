@@ -52,6 +52,10 @@ class PersonaAuthorizationError(Exception):
 # Default transition authorization matrix
 # Maps (from_status, to_status) -> set of authorized personas
 # This matrix is used unless overridden in organization settings
+#
+# CR-004 Phase 4 (RAAS-COMP-047): Simplified to 4-state model
+# Requirements are SPECIFICATIONS - implementation status tracked on Work Items
+# Valid states: draft → review → approved → deprecated
 DEFAULT_TRANSITION_MATRIX: dict[tuple[LifecycleStatus, LifecycleStatus], set[Persona]] = {
     # draft -> review: Anyone working on requirements can submit for review
     (LifecycleStatus.DRAFT, LifecycleStatus.REVIEW): {
@@ -76,12 +80,10 @@ DEFAULT_TRANSITION_MATRIX: dict[tuple[LifecycleStatus, LifecycleStatus], set[Per
         Persona.TESTER,
     },
 
-    # approved -> in_progress: Start implementation
-    (LifecycleStatus.APPROVED, LifecycleStatus.IN_PROGRESS): {
+    # review -> deprecated: Soft retirement during review (RAAS-FEAT-080)
+    (LifecycleStatus.REVIEW, LifecycleStatus.DEPRECATED): {
         Persona.ENTERPRISE_ARCHITECT,
         Persona.PRODUCT_OWNER,
-        Persona.SCRUM_MASTER,
-        Persona.DEVELOPER,
     },
 
     # approved -> draft: Reopen for major changes
@@ -90,43 +92,17 @@ DEFAULT_TRANSITION_MATRIX: dict[tuple[LifecycleStatus, LifecycleStatus], set[Per
         Persona.PRODUCT_OWNER,
     },
 
-    # in_progress -> implemented: Developer marks work complete
-    (LifecycleStatus.IN_PROGRESS, LifecycleStatus.IMPLEMENTED): {
-        Persona.ENTERPRISE_ARCHITECT,
-        Persona.DEVELOPER,
-    },
-
-    # in_progress -> approved: Back to backlog (blocked, deprioritized)
-    (LifecycleStatus.IN_PROGRESS, LifecycleStatus.APPROVED): {
+    # approved -> review: Send back for re-review after changes
+    (LifecycleStatus.APPROVED, LifecycleStatus.REVIEW): {
         Persona.ENTERPRISE_ARCHITECT,
         Persona.PRODUCT_OWNER,
         Persona.SCRUM_MASTER,
-        Persona.DEVELOPER,
     },
 
-    # implemented -> validated: ONLY testers can validate (no self-validation)
-    (LifecycleStatus.IMPLEMENTED, LifecycleStatus.VALIDATED): {
+    # approved -> deprecated: Soft retirement (RAAS-FEAT-080)
+    (LifecycleStatus.APPROVED, LifecycleStatus.DEPRECATED): {
         Persona.ENTERPRISE_ARCHITECT,
-        Persona.TESTER,
-    },
-
-    # implemented -> in_progress: Rework needed (found issues)
-    (LifecycleStatus.IMPLEMENTED, LifecycleStatus.IN_PROGRESS): {
-        Persona.ENTERPRISE_ARCHITECT,
-        Persona.DEVELOPER,
-        Persona.TESTER,
-    },
-
-    # validated -> deployed: ONLY release manager can deploy
-    (LifecycleStatus.VALIDATED, LifecycleStatus.DEPLOYED): {
-        Persona.ENTERPRISE_ARCHITECT,
-        Persona.RELEASE_MANAGER,
-    },
-
-    # validated -> implemented: Validation failed, needs fix
-    (LifecycleStatus.VALIDATED, LifecycleStatus.IMPLEMENTED): {
-        Persona.ENTERPRISE_ARCHITECT,
-        Persona.TESTER,
+        Persona.PRODUCT_OWNER,
     },
 }
 

@@ -168,7 +168,7 @@ def list_requirements(
     tags: Optional[list[str]] = Query(None, description="Filter by tags (AND logic - must have ALL tags)"),
     include_deployed: bool = Query(False, description="Include deployed items (default: false)"),
     include_deprecated: bool = Query(False, description="Include deprecated items (default: false)"),
-    ready_to_implement: Optional[bool] = Query(None, description="Filter for requirements ready to implement (all dependencies code-complete: implemented, validated, or deployed)"),
+    ready_to_implement: Optional[bool] = Query(None, description="Filter for requirements ready to implement (all dependencies have deployed_version_id set)"),
     blocked_by: Optional[UUID] = Query(None, description="Filter for requirements that depend on the specified requirement ID"),
     db: Session = Depends(get_db),
 ):

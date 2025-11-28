@@ -181,7 +181,7 @@ def create_approval_request_task(
     """Create a task for approving a requirement status transition.
 
     Used when a requirement needs approval to transition to a new status
-    (e.g., review -> approved, implemented -> validated).
+    (e.g., review -> approved). CR-004 Phase 4: 4-state model (draft/review/approved/deprecated).
 
     Args:
         db: Database session
