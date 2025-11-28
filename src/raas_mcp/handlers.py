@@ -2133,3 +2133,116 @@ async def handle_get_work_item_history(
     text = f"**Work Item History ({work_item_id})**\n\n{history_text}"
 
     return [TextContent(type="text", text=text)], current_scope
+
+
+# ============================================================================
+# Requirement Versioning Handlers (CR-002: RAAS-FEAT-097)
+# ============================================================================
+
+async def handle_list_requirement_versions(
+    arguments: dict,
+    client: httpx.AsyncClient,
+    current_scope: Optional[dict] = None
+) -> tuple[list[TextContent], Optional[dict]]:
+    """List all versions of a requirement with pagination."""
+    requirement_id = arguments["requirement_id"]
+    params = {k: v for k, v in arguments.items() if v is not None and k != "requirement_id"}
+
+    response = await client.get(f"/work-items/requirements/{requirement_id}/versions", params=params)
+    response.raise_for_status()
+    result = response.json()
+    logger.info(f"Successfully listed {result['total']} versions for requirement {requirement_id}")
+
+    if not result['items']:
+        return [TextContent(type="text", text=f"No versions found for requirement {requirement_id}")], current_scope
+
+    versions_text = "\n\n".join([formatters.format_requirement_version(v) for v in result['items']])
+    current_info = f"\nCurrent approved version: v{result['current_version_number']}" if result.get('current_version_number') else ""
+    text = f"**Versions for {requirement_id}** ({result['total']} total){current_info}\n\n{versions_text}"
+
+    return [TextContent(type="text", text=text)], current_scope
+
+
+async def handle_get_requirement_version(
+    arguments: dict,
+    client: httpx.AsyncClient,
+    current_scope: Optional[dict] = None
+) -> tuple[list[TextContent], Optional[dict]]:
+    """Get a specific version of a requirement by version number."""
+    requirement_id = arguments["requirement_id"]
+    version_number = arguments["version_number"]
+
+    response = await client.get(f"/work-items/requirements/{requirement_id}/versions/{version_number}")
+    response.raise_for_status()
+    result = response.json()
+    logger.info(f"Successfully retrieved version {version_number} for requirement {requirement_id}")
+
+    # Include full content for this version
+    text = f"{formatters.format_requirement_version(result)}\n\n**Content:**\n{result.get('content', '(no content)')}"
+
+    return [TextContent(type="text", text=text)], current_scope
+
+
+async def handle_diff_requirement_versions(
+    arguments: dict,
+    client: httpx.AsyncClient,
+    current_scope: Optional[dict] = None
+) -> tuple[list[TextContent], Optional[dict]]:
+    """Get diff between two versions of a requirement."""
+    requirement_id = arguments["requirement_id"]
+    from_version = arguments["from_version"]
+    to_version = arguments["to_version"]
+
+    params = {"from_version": from_version, "to_version": to_version}
+    response = await client.get(f"/work-items/requirements/{requirement_id}/versions/diff", params=params)
+    response.raise_for_status()
+    result = response.json()
+    logger.info(f"Successfully generated diff v{from_version}→v{to_version} for requirement {requirement_id}")
+
+    return [TextContent(type="text", text=formatters.format_version_diff(result))], current_scope
+
+
+async def handle_mark_requirement_deployed(
+    arguments: dict,
+    client: httpx.AsyncClient,
+    current_scope: Optional[dict] = None
+) -> tuple[list[TextContent], Optional[dict]]:
+    """Mark a requirement's deployed_version_id to track production deployment."""
+    requirement_id = arguments["requirement_id"]
+    params = {}
+    if arguments.get("version_id"):
+        params["version_id"] = arguments["version_id"]
+
+    response = await client.post(f"/work-items/requirements/{requirement_id}/mark-deployed", params=params)
+    response.raise_for_status()
+    result = response.json()
+    logger.info(f"Successfully marked requirement {requirement_id} as deployed")
+
+    text = (f"Marked **{result.get('human_readable_id', requirement_id)}** as deployed\n"
+            f"Deployed version: v{result.get('deployed_version_number', '?')}")
+
+    return [TextContent(type="text", text=text)], current_scope
+
+
+async def handle_batch_mark_requirements_deployed(
+    arguments: dict,
+    client: httpx.AsyncClient,
+    current_scope: Optional[dict] = None
+) -> tuple[list[TextContent], Optional[dict]]:
+    """Batch mark multiple requirements as deployed."""
+    requirement_ids = arguments["requirement_ids"]
+
+    params = {"requirement_ids": requirement_ids}
+    response = await client.post("/work-items/requirements/batch-mark-deployed", params=params)
+    response.raise_for_status()
+    result = response.json()
+    logger.info(f"Successfully marked {result.get('updated_count', 0)} requirements as deployed")
+
+    text = (f"Batch deployment update complete\n"
+            f"Updated: {result.get('updated_count', 0)} requirements\n"
+            f"Failed: {result.get('failed_count', 0)} requirements")
+
+    if result.get('errors'):
+        text += f"\n\nErrors:\n" + "\n".join([f"- {e}" for e in result['errors']])
+
+    return [TextContent(type="text", text=text)], current_scope

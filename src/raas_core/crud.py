@@ -265,6 +265,18 @@ def create_requirement(
         db.rollback()
         raise
 
+    # CR-002: Create initial version (v1) for new requirements
+    if cleaned_content:
+        create_requirement_version(
+            db=db,
+            requirement=db_requirement,
+            content=cleaned_content,
+            user_id=user_id,
+            change_reason="Initial creation",
+        )
+        db.commit()
+        logger.debug(f"Created initial version v1 for requirement {db_requirement.id}")
+
     # Create history entry
     _create_history_entry(
         db=db,

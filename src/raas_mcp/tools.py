@@ -1952,4 +1952,99 @@ def get_tools() -> list[Tool]:
                 "required": ["work_item_id"]
             }
         ),
+
+        # ========================================================================
+        # Requirement Versioning (CR-002: RAAS-FEAT-097)
+        # ========================================================================
+
+        Tool(
+            name="list_requirement_versions",
+            description="List all versions of a requirement with pagination. "
+                       "\n\nEvery content change creates an immutable version snapshot. "
+                       "Use this to see the complete history of a requirement's evolution."
+                       "\n\nRETURNS: List of versions with version_number, content_hash, title, created_at, source_work_item_id"
+                       "\n\nRELATED TOOLS:"
+                       "\n• get_requirement_version() to get full content of a specific version"
+                       "\n• diff_requirement_versions() to compare two versions",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "requirement_id": {"type": "string", "description": "UUID or human-readable ID (e.g., RAAS-FEAT-042)"},
+                    "page": {"type": "integer", "description": "Page number (default: 1)"},
+                    "page_size": {"type": "integer", "description": "Items per page (default: 50, max: 100)"}
+                },
+                "required": ["requirement_id"]
+            }
+        ),
+        Tool(
+            name="get_requirement_version",
+            description="Get a specific version of a requirement by version number. "
+                       "\n\nRETURNS: Full version details including complete content snapshot."
+                       "\n\nUSE CASES:"
+                       "\n• View historical content at a point in time"
+                       "\n• Compare what was approved vs current draft"
+                       "\n• Audit trail for compliance",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "requirement_id": {"type": "string", "description": "UUID or human-readable ID"},
+                    "version_number": {"type": "integer", "description": "Version number (1, 2, 3...)"}
+                },
+                "required": ["requirement_id", "version_number"]
+            }
+        ),
+        Tool(
+            name="diff_requirement_versions",
+            description="Get diff between two versions of a requirement. "
+                       "\n\nRETURNS: Both versions' content for comparison, plus metadata."
+                       "\n\nCOMMON PATTERNS:"
+                       "\n• Compare current_version vs latest: See pending changes awaiting approval"
+                       "\n• Compare deployed_version vs current: See what's approved but not yet deployed"
+                       "\n• Compare any two versions: Historical audit",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "requirement_id": {"type": "string", "description": "UUID or human-readable ID"},
+                    "from_version": {"type": "integer", "description": "Starting version number"},
+                    "to_version": {"type": "integer", "description": "Ending version number"}
+                },
+                "required": ["requirement_id", "from_version", "to_version"]
+            }
+        ),
+        Tool(
+            name="mark_requirement_deployed",
+            description="Mark a requirement's deployed_version_id to track production deployment. "
+                       "\n\nCalled when a Release deploys to production. Updates deployed_version_id "
+                       "to either a specific version or the current approved version."
+                       "\n\nPARAMETERS:"
+                       "\n• requirement_id: UUID or human-readable ID"
+                       "\n• version_id: Optional specific version UUID (defaults to current_version_id)"
+                       "\n\nRETURNS: Updated requirement with new deployed_version_id",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "requirement_id": {"type": "string", "description": "UUID or human-readable ID"},
+                    "version_id": {"type": "string", "description": "Optional: specific version UUID to mark as deployed"}
+                },
+                "required": ["requirement_id"]
+            }
+        ),
+        Tool(
+            name="batch_mark_requirements_deployed",
+            description="Batch mark multiple requirements as deployed. "
+                       "\n\nUse when a Release deploys multiple requirements to production. "
+                       "Updates deployed_version_id to current_version_id for all specified requirements."
+                       "\n\nRETURNS: Count of successfully updated requirements",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "requirement_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of requirement UUIDs or human-readable IDs"
+                    }
+                },
+                "required": ["requirement_ids"]
+            }
+        ),
     ]

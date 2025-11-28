@@ -175,6 +175,12 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent | ImageConten
                 "update_work_item": handlers.handle_update_work_item,
                 "transition_work_item": handlers.handle_transition_work_item,
                 "get_work_item_history": handlers.handle_get_work_item_history,
+                # Requirement Versioning handlers (CR-002: RAAS-FEAT-097)
+                "list_requirement_versions": handlers.handle_list_requirement_versions,
+                "get_requirement_version": handlers.handle_get_requirement_version,
+                "diff_requirement_versions": handlers.handle_diff_requirement_versions,
+                "mark_requirement_deployed": handlers.handle_mark_requirement_deployed,
+                "batch_mark_requirements_deployed": handlers.handle_batch_mark_requirements_deployed,
             }
 
             # Look up and execute handler

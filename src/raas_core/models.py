@@ -479,6 +479,30 @@ class Requirement(Base):
         """Get list of dependency IDs."""
         return [dep.id for dep in self.dependencies] if self.dependencies else []
 
+    @property
+    def current_version_number(self) -> Optional[int]:
+        """Get version number of the current approved version (CR-002)."""
+        if self.current_version:
+            return self.current_version.version_number
+        return None
+
+    @property
+    def has_pending_changes(self) -> bool:
+        """Check if newer versions exist beyond current_version_id (CR-002).
+
+        Returns True if there are versions with higher version numbers
+        than the current approved version.
+        """
+        if not self.versions:
+            return False
+        if not self.current_version_id:
+            # No approved version yet, any version is pending
+            return len(self.versions) > 0
+
+        current_num = self.current_version_number or 0
+        max_version = max(v.version_number for v in self.versions) if self.versions else 0
+        return max_version > current_num
+
     def __repr__(self) -> str:
         return f"<Requirement {self.type.value}: {self.title}>"
 
@@ -490,6 +514,7 @@ class ChangeType(str, enum.Enum):
     UPDATED = "updated"
     DELETED = "deleted"
     STATUS_CHANGED = "status_changed"
+    DEPLOYED = "deployed"  # CR-002: Track deployment events
 
 
 class RequirementHistory(Base):

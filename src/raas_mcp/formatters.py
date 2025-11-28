@@ -215,3 +215,54 @@ def format_work_item_history(entry: dict) -> str:
         return f"- [{timestamp}] {change_type} by {changed_by}: {entry['field_name']} '{entry.get('old_value')}' -> '{entry.get('new_value')}'"
     else:
         return f"- [{timestamp}] {change_type} by {changed_by}"
+
+
+def format_requirement_version(version: dict) -> str:
+    """Format a requirement version for display (CR-002: RAAS-FEAT-097)."""
+    version_num = version.get('version_number', '?')
+    title = version.get('title', '(untitled)')
+    content_hash = version.get('content_hash', '')[:12] + '...' if version.get('content_hash') else 'N/A'
+    created_at = version.get('created_at', 'unknown')
+
+    # Source work item if present
+    source_wi = version.get('source_work_item_id')
+    source_info = f"\nSource Work Item: {source_wi}" if source_wi else ""
+
+    # Change reason if present
+    reason = version.get('change_reason')
+    reason_info = f"\nChange Reason: {reason}" if reason else ""
+
+    return f"""**Version {version_num}**: {title}
+Hash: {content_hash}
+Created: {created_at}{source_info}{reason_info}"""
+
+
+def format_requirement_version_summary(version: dict) -> str:
+    """Format a requirement version as a compact one-liner."""
+    version_num = version.get('version_number', '?')
+    title = version.get('title', '(untitled)')
+    created_at = version.get('created_at', 'unknown')[:10]  # Just date
+
+    return f"v{version_num}: {title} ({created_at})"
+
+
+def format_version_diff(diff: dict) -> str:
+    """Format a version diff for display (CR-002: RAAS-FEAT-097)."""
+    req_id = diff.get('requirement_id', 'unknown')
+    from_v = diff.get('from_version', '?')
+    to_v = diff.get('to_version', '?')
+    from_title = diff.get('from_title', '(untitled)')
+    to_title = diff.get('to_title', '(untitled)')
+
+    title_change = ""
+    if from_title != to_title:
+        title_change = f"\n**Title changed**: '{from_title}' → '{to_title}'"
+
+    return f"""**Diff: v{from_v} → v{to_v}**
+Requirement: {req_id}{title_change}
+
+--- FROM (v{from_v}) ---
+{diff.get('from_content', '(no content)')}
+
+--- TO (v{to_v}) ---
+{diff.get('to_content', '(no content)')}"""

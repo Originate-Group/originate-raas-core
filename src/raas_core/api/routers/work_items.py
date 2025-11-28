@@ -21,6 +21,8 @@ from ...models import (
     WorkItemType,
     Requirement,
     RequirementVersion,
+    RequirementHistory,
+    ChangeType,
     User,
     work_item_affects,
 )
@@ -910,6 +912,9 @@ async def mark_requirement_deployed(
             detail=f"Requirement not found: {requirement_id}"
         )
 
+    # Track old deployed version for audit
+    old_deployed_version_id = req.deployed_version_id
+
     # Update deployed version pointer
     version = update_deployed_version_pointer(db, req, version_id)
 
@@ -919,7 +924,21 @@ async def mark_requirement_deployed(
             detail=f"No version found to mark as deployed for requirement {requirement_id}"
         )
 
+    # CR-002: Create audit log entry for deployment event
+    old_version_str = str(old_deployed_version_id) if old_deployed_version_id else "none"
+    history_entry = RequirementHistory(
+        requirement_id=req.id,
+        change_type=ChangeType.DEPLOYED,
+        field_name="deployed_version_id",
+        old_value=old_version_str,
+        new_value=str(version.id),
+        change_reason=f"Deployed version {version.version_number}",
+    )
+    db.add(history_entry)
+
     db.commit()
+
+    logger.info(f"Marked requirement {req.human_readable_id or req.id} as deployed (version {version.version_number})")
 
     return {
         "requirement_id": str(req.id),
@@ -971,8 +990,23 @@ async def batch_mark_deployed(
             })
             continue
 
+        # Track old deployed version for audit
+        old_deployed_version_id = req.deployed_version_id
+
         version = update_deployed_version_pointer(db, req)
         if version:
+            # CR-002: Create audit log entry for deployment event
+            old_version_str = str(old_deployed_version_id) if old_deployed_version_id else "none"
+            history_entry = RequirementHistory(
+                requirement_id=req.id,
+                change_type=ChangeType.DEPLOYED,
+                field_name="deployed_version_id",
+                old_value=old_version_str,
+                new_value=str(version.id),
+                change_reason=f"Batch deployed version {version.version_number}",
+            )
+            db.add(history_entry)
+
             results["success"].append({
                 "requirement_id": str(req.id),
                 "human_readable_id": req.human_readable_id,

@@ -108,6 +108,11 @@ class RequirementListItem(BaseModel):
     quality_score: QualityScore = Field(description="Quality score based on content length")
     child_count: int = Field(description="Number of direct children")
 
+    # Versioning fields (CR-002: RAAS-FEAT-097)
+    content_hash: Optional[str] = Field(None, description="SHA-256 hash of current content for conflict detection")
+    current_version_id: Optional[UUID] = Field(None, description="UUID of the approved/active version")
+    deployed_version_id: Optional[UUID] = Field(None, description="UUID of the version deployed to production")
+
     model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 
@@ -127,6 +132,13 @@ class RequirementResponse(RequirementBase):
     content_length: int = Field(description="Length of full markdown content in characters")
     quality_score: QualityScore = Field(description="Quality score based on content length")
     child_count: int = Field(description="Number of direct children")
+
+    # Versioning fields (CR-002: RAAS-FEAT-097)
+    content_hash: Optional[str] = Field(None, description="SHA-256 hash of current content for conflict detection")
+    current_version_id: Optional[UUID] = Field(None, description="UUID of the approved/active version")
+    deployed_version_id: Optional[UUID] = Field(None, description="UUID of the version deployed to production")
+    current_version_number: Optional[int] = Field(None, description="Version number of the current approved version")
+    has_pending_changes: bool = Field(False, description="True if newer versions exist beyond current_version_id")
 
     model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
