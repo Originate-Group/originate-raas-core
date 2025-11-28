@@ -351,6 +351,11 @@ def update_requirement(
         description="Workflow persona making this request (e.g., developer, tester, release_manager). "
                     "Required for status transitions when persona enforcement is enabled."
     ),
+    x_agent_email: Optional[str] = Header(
+        None,
+        description="Agent email performing this action on behalf of the director (human). "
+                    "Used for director/actor audit trail per CR-012 and GUARD-SEC-003."
+    ),
     db: Session = Depends(get_db),
 ):
     """
@@ -378,6 +383,16 @@ def update_requirement(
     current_user = get_current_user_optional(request)
     user_id = current_user.id if current_user else None
 
+    # Look up agent for actor_id (BUG-002 fix: director/actor audit trail)
+    actor_id = None
+    if x_agent_email:
+        agent_user = crud.get_agent_by_email(db, x_agent_email)
+        if agent_user:
+            actor_id = agent_user.id
+            logger.debug(f"Agent {x_agent_email} resolved to actor_id {actor_id}")
+        else:
+            logger.warning(f"Agent email {x_agent_email} not found in database")
+
     # Parse persona from header
     persona = None
     if x_persona:
@@ -392,7 +407,8 @@ def update_requirement(
 
     try:
         requirement = crud.update_requirement(
-            db, existing.id, requirement_update, user_id=user_id, persona=persona
+            db, existing.id, requirement_update, user_id=user_id, persona=persona,
+            director_id=user_id, actor_id=actor_id  # BUG-002: director/actor audit trail
         )
 
         return requirement

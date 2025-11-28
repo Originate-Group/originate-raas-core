@@ -1027,3 +1027,189 @@ async def batch_mark_deployed(
         "success": results["success"],
         "failed": results["failed"],
     }
+
+
+# =============================================================================
+# CR-002 (RAAS-FEAT-104): Work Item Diffs and Conflict Detection
+# =============================================================================
+
+from ...schemas import (
+    RequirementDiffItem,
+    WorkItemDiffsResponse,
+    ConflictItem,
+    ConflictCheckResponse,
+)
+
+
+@router.get("/{work_item_id}/diffs", response_model=WorkItemDiffsResponse)
+async def get_work_item_diffs(
+    work_item_id: str,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
+    """Get diffs for all affected requirements in a Work Item (CR-002: RAAS-FEAT-104).
+
+    For CR review, shows actual content changes for each affected requirement.
+
+    For CRs with proposed_content:
+    - Shows diff between current_version content and proposed content
+
+    For other Work Items:
+    - Shows diff between current_version and latest version (if different)
+
+    Returns:
+        WorkItemDiffsResponse with diff details for each affected requirement
+    """
+    work_item = resolve_work_item_id(db, work_item_id)
+    if not work_item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Work Item not found: {work_item_id}"
+        )
+
+    # Eager load affected requirements
+    db.refresh(work_item, ["affected_requirements"])
+
+    diffs = []
+    total_with_changes = 0
+
+    for req in work_item.affected_requirements:
+        # Get current version (approved)
+        current_version = None
+        current_content = None
+        current_version_num = None
+        if req.current_version_id:
+            current_version = db.query(RequirementVersion).filter(
+                RequirementVersion.id == req.current_version_id
+            ).first()
+            if current_version:
+                current_content = current_version.content
+                current_version_num = current_version.version_number
+
+        # Get latest version
+        latest_version = db.query(RequirementVersion).filter(
+            RequirementVersion.requirement_id == req.id
+        ).order_by(RequirementVersion.version_number.desc()).first()
+
+        latest_content = latest_version.content if latest_version else None
+        latest_version_num = latest_version.version_number if latest_version else None
+
+        # Get proposed content for CRs
+        proposed_content = None
+        if work_item.work_item_type == WorkItemType.CR and work_item.proposed_content:
+            # Check both UUID and human-readable ID
+            proposed_content = work_item.proposed_content.get(str(req.id))
+            if not proposed_content and req.human_readable_id:
+                proposed_content = work_item.proposed_content.get(req.human_readable_id)
+
+        # Determine if there are changes
+        has_changes = False
+        changes_summary = ""
+
+        if proposed_content:
+            # For CRs, compare current to proposed
+            if current_content != proposed_content:
+                has_changes = True
+                changes_summary = "Proposed changes pending"
+        elif current_version_num and latest_version_num and current_version_num != latest_version_num:
+            # For non-CRs, compare current to latest
+            has_changes = True
+            changes_summary = f"Version {current_version_num} -> {latest_version_num}"
+
+        if has_changes:
+            total_with_changes += 1
+
+        diffs.append(RequirementDiffItem(
+            requirement_id=req.id,
+            human_readable_id=req.human_readable_id,
+            title=req.title,
+            current_version_number=current_version_num,
+            latest_version_number=latest_version_num,
+            current_content=current_content,
+            proposed_content=proposed_content,
+            latest_content=latest_content,
+            has_changes=has_changes,
+            changes_summary=changes_summary,
+        ))
+
+    return WorkItemDiffsResponse(
+        work_item_id=work_item.id,
+        human_readable_id=work_item.human_readable_id,
+        work_item_type=work_item.work_item_type.value,
+        affected_requirements=diffs,
+        total_affected=len(diffs),
+        total_with_changes=total_with_changes,
+    )
+
+
+@router.get("/{work_item_id}/check-conflicts", response_model=ConflictCheckResponse)
+async def check_work_item_conflicts(
+    work_item_id: str,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
+    """Check for conflicts before approving/merging a Work Item (CR-002: RAAS-FEAT-104).
+
+    Proactive conflict detection that surfaces issues to reviewers before approval.
+
+    Compares baseline_hashes (captured when Work Item created) to current content hashes.
+    If a requirement's content has changed since the Work Item was created, it's flagged
+    as a conflict.
+
+    Returns:
+        ConflictCheckResponse with conflict status for each affected requirement
+    """
+    work_item = resolve_work_item_id(db, work_item_id)
+    if not work_item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Work Item not found: {work_item_id}"
+        )
+
+    # Eager load affected requirements
+    db.refresh(work_item, ["affected_requirements"])
+
+    baseline_hashes = work_item.baseline_hashes or {}
+    conflicts = []
+    conflict_count = 0
+
+    for req in work_item.affected_requirements:
+        # Get baseline hash for this requirement
+        baseline_hash = baseline_hashes.get(str(req.id))
+        if not baseline_hash and req.human_readable_id:
+            baseline_hash = baseline_hashes.get(req.human_readable_id)
+
+        # Get current hash
+        current_hash = req.content_hash
+        if not current_hash and req.content:
+            current_hash = compute_content_hash(req.content)
+
+        # Check for conflict
+        has_conflict = False
+        conflict_reason = None
+
+        if baseline_hash and current_hash and baseline_hash != current_hash:
+            has_conflict = True
+            conflict_reason = "Content changed since Work Item creation"
+            conflict_count += 1
+        elif not baseline_hash:
+            # No baseline - can't detect conflicts
+            conflict_reason = "No baseline hash (Work Item created before conflict detection)"
+
+        conflicts.append(ConflictItem(
+            requirement_id=req.id,
+            human_readable_id=req.human_readable_id,
+            title=req.title,
+            baseline_hash=baseline_hash,
+            current_hash=current_hash,
+            has_conflict=has_conflict,
+            conflict_reason=conflict_reason,
+        ))
+
+    return ConflictCheckResponse(
+        work_item_id=work_item.id,
+        human_readable_id=work_item.human_readable_id,
+        has_conflicts=conflict_count > 0,
+        conflict_count=conflict_count,
+        affected_requirements=conflicts,
+    )
