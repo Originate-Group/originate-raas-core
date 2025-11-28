@@ -1002,7 +1002,11 @@ async def handle_create_requirement(
     • Features: Must have parent_id pointing to a component
     • Requirements: Must have parent_id pointing to a feature
     """
-    response = await client.post("/requirements/", json=arguments)
+    # BUG-003: Send X-Agent-Email header for director/actor audit trail
+    headers = {}
+    if current_scope and current_scope.get("_agent"):
+        headers["X-Agent-Email"] = current_scope["_agent"]
+    response = await client.post("/requirements/", json=arguments, headers=headers)
     response.raise_for_status()
     result = response.json()
     readable_id = result.get('human_readable_id', 'PENDING')
@@ -1087,6 +1091,9 @@ async def handle_update_requirement(
     # Extract persona for header (not part of JSON body)
     persona = arguments.pop("persona", None)
     headers = {"X-Persona": persona} if persona else {}
+    # BUG-003: Send X-Agent-Email header for director/actor audit trail
+    if current_scope and current_scope.get("_agent"):
+        headers["X-Agent-Email"] = current_scope["_agent"]
     response = await client.patch(f"/requirements/{req_id}", json=arguments, headers=headers)
     response.raise_for_status()
     result = response.json()
@@ -1183,6 +1190,9 @@ async def handle_transition_status(
     new_status = arguments["new_status"]
     persona = arguments.get("persona")
     headers = {"X-Persona": persona} if persona else {}
+    # BUG-003: Send X-Agent-Email header for director/actor audit trail
+    if current_scope and current_scope.get("_agent"):
+        headers["X-Agent-Email"] = current_scope["_agent"]
     response = await client.patch(f"/requirements/{req_id}", json={"status": new_status}, headers=headers)
     response.raise_for_status()
     result = response.json()

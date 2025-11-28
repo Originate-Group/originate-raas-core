@@ -49,6 +49,11 @@ def get_requirement_template(req_type: models.RequirementType):
 def create_requirement(
     requirement: schemas.RequirementCreate,
     request: Request,
+    x_agent_email: Optional[str] = Header(
+        None,
+        description="Agent email performing this action on behalf of the director (human). "
+                    "Used for director/actor audit trail per BUG-003 and GUARD-SEC-003."
+    ),
     db: Session = Depends(get_db),
 ):
     """
@@ -60,6 +65,7 @@ def create_requirement(
     - **description**: Detailed description (optional)
     - **status**: Lifecycle status (defaults to 'draft')
     - **tags**: List of tags (optional)
+    - **X-Agent-Email**: Header for agent performing action (for audit trail)
     """
     # Derive organization_id from parent/project
     organization_id = None
@@ -117,13 +123,25 @@ def create_requirement(
     current_user = get_current_user_optional(request)
     user_id = current_user.id if current_user else None
 
+    # BUG-003: Look up agent for actor_id (director/actor audit trail)
+    actor_id = None
+    if x_agent_email:
+        agent_user = crud.get_agent_by_email(db, x_agent_email)
+        if agent_user:
+            actor_id = agent_user.id
+            logger.debug(f"Agent {x_agent_email} resolved to actor_id {actor_id}")
+        else:
+            logger.warning(f"Agent email {x_agent_email} not found in database")
+
     try:
         result = crud.create_requirement(
             db=db,
             requirement=requirement,
             organization_id=organization_id,
             user_id=user_id,
-            project_id=requirement.project_id
+            project_id=requirement.project_id,
+            director_id=user_id,  # BUG-003: director is the authenticated user
+            actor_id=actor_id,    # BUG-003: actor is the agent (if any)
         )
         logger.info(f"Created {result.type.value} '{result.title}' (ID: {result.id})")
         return result

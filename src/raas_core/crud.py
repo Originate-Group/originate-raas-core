@@ -68,6 +68,8 @@ def create_requirement(
     organization_id: UUID,
     user_id: UUID,
     project_id: Optional[UUID] = None,
+    director_id: Optional[UUID] = None,
+    actor_id: Optional[UUID] = None,
 ) -> models.Requirement:
     """
     Create a new requirement.
@@ -82,6 +84,8 @@ def create_requirement(
         organization_id: Organization UUID
         user_id: User UUID (creator)
         project_id: Project UUID (required for epics, inherited from parent for others)
+        director_id: BUG-003 - Human user who authorized the change
+        actor_id: BUG-003 - Agent account that executed the change (if applicable)
 
     Returns:
         Created requirement instance
@@ -279,13 +283,15 @@ def create_requirement(
         db.commit()
         logger.debug(f"Created initial version v1 for requirement {db_requirement.id}")
 
-    # Create history entry
+    # Create history entry (BUG-003: include director/actor for audit trail)
     _create_history_entry(
         db=db,
         requirement_id=db_requirement.id,
         change_type=models.ChangeType.CREATED,
         new_value=f"Created {requirement.type.value}: {title}",
         user_id=user_id,
+        director_id=director_id,
+        actor_id=actor_id,
     )
 
     return db_requirement
