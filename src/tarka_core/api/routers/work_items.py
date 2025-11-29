@@ -709,6 +709,14 @@ async def update_work_item(
                         new_value=WorkItemStatus.DEPLOYED.value,
                         change_reason=f"Auto-deployed via Release {work_item.human_readable_id}",
                     )
+                    # BUG-013 fix: Mark affected requirements as deployed
+                    db.refresh(included_wi, ["affected_requirements"])
+                    for req in included_wi.affected_requirements:
+                        update_deployed_version_pointer(db, req)
+                        logger.info(
+                            f"Marked {req.human_readable_id} as deployed via "
+                            f"{included_wi.human_readable_id} in Release {work_item.human_readable_id}"
+                        )
 
         # Handle completion timestamps
         if data.status == WorkItemStatus.COMPLETED:
@@ -734,6 +742,16 @@ async def update_work_item(
                             new_value=WorkItemStatus.COMPLETED.value,
                             change_reason=f"Auto-completed via Release {work_item.human_readable_id}",
                         )
+                        # BUG-013 fix: Ensure affected requirements are marked as deployed
+                        # (safety net in case DEPLOYED cascade was skipped or failed)
+                        db.refresh(included_wi, ["affected_requirements"])
+                        for req in included_wi.affected_requirements:
+                            if not req.deployed_version_id:
+                                update_deployed_version_pointer(db, req)
+                                logger.info(
+                                    f"Marked {req.human_readable_id} as deployed via "
+                                    f"{included_wi.human_readable_id} in Release {work_item.human_readable_id}"
+                                )
         elif data.status == WorkItemStatus.CANCELLED:
             work_item.cancelled_at = datetime.utcnow()
 
@@ -1295,6 +1313,83 @@ async def batch_mark_deployed(
         "success": results["success"],
         "failed": results["failed"],
     }
+
+
+@router.post("/releases/backfill-deployments", response_model=dict)
+async def backfill_release_deployments(
+    db: Session = Depends(get_db),
+):
+    """BUG-013 fix: Retrospectively mark requirements as deployed for completed Releases.
+
+    This endpoint fixes data corruption caused by the missing deployment cascade.
+    It finds all completed Releases, traverses their included work items, and marks
+    all affected requirements as deployed.
+
+    This is a one-time fix endpoint that can be run safely multiple times (idempotent).
+    """
+    # Find all completed releases
+    completed_releases = db.query(WorkItem).filter(
+        WorkItem.work_item_type == WorkItemType.RELEASE,
+        WorkItem.status == WorkItemStatus.COMPLETED,
+    ).all()
+
+    results = {
+        "releases_processed": 0,
+        "work_items_processed": 0,
+        "requirements_marked": 0,
+        "requirements_already_deployed": 0,
+        "details": [],
+    }
+
+    for release in completed_releases:
+        release_detail = {
+            "release_id": release.human_readable_id,
+            "work_items": [],
+        }
+
+        db.refresh(release, ["included_work_items"])
+        for included_wi in release.included_work_items:
+            wi_detail = {
+                "work_item_id": included_wi.human_readable_id,
+                "requirements_marked": [],
+                "requirements_skipped": [],
+            }
+
+            db.refresh(included_wi, ["affected_requirements"])
+            for req in included_wi.affected_requirements:
+                if not req.deployed_version_id:
+                    version = update_deployed_version_pointer(db, req)
+                    if version:
+                        # Create audit log entry
+                        history_entry = RequirementHistory(
+                            requirement_id=req.id,
+                            change_type=ChangeType.DEPLOYED,
+                            field_name="deployed_version_id",
+                            old_value="none",
+                            new_value=str(version.id),
+                            change_reason=f"BUG-013 backfill: Deployed via {included_wi.human_readable_id} in {release.human_readable_id}",
+                        )
+                        db.add(history_entry)
+                        wi_detail["requirements_marked"].append(req.human_readable_id)
+                        results["requirements_marked"] += 1
+                        logger.info(
+                            f"BUG-013 backfill: Marked {req.human_readable_id} as deployed "
+                            f"via {included_wi.human_readable_id} in {release.human_readable_id}"
+                        )
+                else:
+                    wi_detail["requirements_skipped"].append(req.human_readable_id)
+                    results["requirements_already_deployed"] += 1
+
+            if wi_detail["requirements_marked"] or wi_detail["requirements_skipped"]:
+                release_detail["work_items"].append(wi_detail)
+                results["work_items_processed"] += 1
+
+        results["details"].append(release_detail)
+        results["releases_processed"] += 1
+
+    db.commit()
+
+    return results
 
 
 # =============================================================================
