@@ -23,6 +23,7 @@ from ...models import (
     RequirementVersion,
     RequirementHistory,
     ChangeType,
+    LifecycleStatus,
     User,
     work_item_affects,
     work_item_target_versions,
