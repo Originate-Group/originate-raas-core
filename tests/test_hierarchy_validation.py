@@ -2,8 +2,8 @@
 import pytest
 from uuid import uuid4
 from unittest.mock import MagicMock
-from raas_core.models import RequirementType, Requirement
-from raas_core.hierarchy_validation import (
+from tarka_core.models import RequirementType, Requirement
+from tarka_core.hierarchy_validation import (
     validate_parent_type,
     HierarchyValidationError,
     find_hierarchy_violations,

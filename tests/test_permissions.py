@@ -3,7 +3,7 @@ import pytest
 from uuid import uuid4
 from unittest.mock import MagicMock
 
-from raas_core.models import (
+from tarka_core.models import (
     RequirementType,
     ProjectRole,
     MemberRole,
@@ -12,7 +12,7 @@ from raas_core.models import (
     OrganizationMember,
     ProjectMember,
 )
-from raas_core.permissions import (
+from tarka_core.permissions import (
     PermissionDeniedError,
     check_org_permission,
     check_project_permission,

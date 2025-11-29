@@ -7,8 +7,8 @@ Implementation states (in_progress, implemented, validated, deployed) are now
 tracked on Work Items, not Requirements.
 """
 import pytest
-from raas_core.models import LifecycleStatus
-from raas_core.state_machine import (
+from tarka_core.models import LifecycleStatus
+from tarka_core.state_machine import (
     is_transition_valid,
     validate_transition,
     StateTransitionError,

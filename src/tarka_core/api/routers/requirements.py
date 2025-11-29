@@ -6,11 +6,11 @@ from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Header
 from sqlalchemy.orm import Session
-from raas_core import crud, schemas, models
-from raas_core.markdown_utils import load_template
-from raas_core.hierarchy_validation import find_hierarchy_violations
-from raas_core.api.dependencies import get_current_user_optional
-from raas_core.persona_auth import Persona
+from tarka_core import crud, schemas, models
+from tarka_core.markdown_utils import load_template
+from tarka_core.hierarchy_validation import find_hierarchy_violations
+from tarka_core.api.dependencies import get_current_user_optional
+from tarka_core.persona_auth import Persona
 
 from ..database import get_db
 

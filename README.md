@@ -23,7 +23,7 @@ Configure MCP stdio server in Claude Desktop:
   "mcpServers": {
     "raas": {
       "command": "docker",
-      "args": ["compose", "exec", "-T", "api", "python", "-m", "raas_mcp.server"],
+      "args": ["compose", "exec", "-T", "api", "python", "-m", "tarka_mcp.server"],
       "env": {
         "API_BASE_URL": "http://api:8000/api/v1"
       }
@@ -82,13 +82,13 @@ pip install -e ".[mcp]"
 
 ```
 src/
-├── raas_core/
+├── tarka_core/
 │   ├── models.py           # SQLAlchemy models
 │   ├── crud.py             # CRUD operations
 │   ├── schemas.py          # Pydantic schemas
 │   ├── markdown_utils.py   # Markdown/YAML parsing
 │   └── database.py         # Database connection
-└── raas_mcp/
+└── tarka_mcp/
     └── server.py           # MCP protocol server
 ```
 
@@ -97,7 +97,7 @@ src/
 RaaS Core is typically used as a git submodule or PyPI dependency:
 
 ```python
-from raas_core import (
+from tarka_core import (
     create_requirement,
     get_requirement,
     RequirementCreate,

@@ -6,8 +6,8 @@ from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
-from raas_core import crud, schemas, models
-from raas_core.permissions import (
+from tarka_core import crud, schemas, models
+from tarka_core.permissions import (
     check_org_permission,
     PermissionDeniedError,
     get_user_org_role,

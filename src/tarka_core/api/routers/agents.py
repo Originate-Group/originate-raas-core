@@ -5,7 +5,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from raas_core import crud, schemas, models
+from tarka_core import crud, schemas, models
 
 from ..database import get_db
 from ..dependencies import get_current_user_optional

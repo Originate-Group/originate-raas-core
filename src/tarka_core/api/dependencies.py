@@ -5,7 +5,7 @@ These dependencies work in both solo mode and team mode.
 from typing import Optional
 from fastapi import Request
 
-from raas_core.models import User
+from tarka_core.models import User
 
 
 def get_current_user_optional(request: Request) -> Optional[User]:

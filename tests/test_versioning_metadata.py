@@ -9,12 +9,12 @@ Key behaviors:
 - Only specification changes (title, body, depends_on, adheres_to) trigger versioning
 """
 import pytest
-from raas_core.markdown_utils import (
+from tarka_core.markdown_utils import (
     strip_system_fields_from_frontmatter,
     inject_database_state,
     parse_markdown,
 )
-from raas_core.versioning import content_has_changed
+from tarka_core.versioning import content_has_changed
 
 
 class TestStripSystemFields:

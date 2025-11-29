@@ -22,4 +22,4 @@ EXPOSE 8000
 
 # Run migrations and start server
 CMD alembic upgrade head && \
-    uvicorn raas_core.api.main:app --host 0.0.0.0 --port 8000 --reload
+    uvicorn tarka_core.api.main:app --host 0.0.0.0 --port 8000 --reload

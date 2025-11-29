@@ -2358,7 +2358,7 @@ def _resolve_source_id(
         return None
 
     # Import here to avoid circular imports
-    from raas_core import elicitation
+    from tarka_core import elicitation
 
     if source_type == "elicitation_session":
         session = elicitation.get_elicitation_session(db, source_id)

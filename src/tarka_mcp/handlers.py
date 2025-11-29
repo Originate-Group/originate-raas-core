@@ -1,7 +1,7 @@
 """Common MCP tool handlers shared between stdio and HTTP transports.
 
 This module provides handler logic that can be used by both:
-- src/raas_mcp/server.py (stdio transport for local development)
+- src/tarka_mcp/server.py (stdio transport for local development)
 - raas-team/src/api/routers/mcp_http.py (HTTP transport with OAuth for production)
 
 All handlers follow a consistent pattern:
