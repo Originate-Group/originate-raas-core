@@ -337,8 +337,8 @@ def get_requirement_by_any_id(db: Session, requirement_id: str) -> Optional[mode
         pass
 
     # Validate human-readable ID format: PROJECT-TYPE-###
-    # Pattern: 2-4 uppercase alphanumeric, dash, TYPE (EPIC|COMP|FEAT|REQ), dash, 3 digits
-    if not re.match(r'^[A-Z0-9]{2,4}-(EPIC|COMP|FEAT|REQ)-[0-9]{3}$', requirement_id.upper()):
+    # Pattern: 2-10 uppercase alphanumeric, dash, TYPE (EPIC|COMP|FEAT|REQ), dash, 3 digits
+    if not re.match(r'^[A-Z0-9]{2,10}-(EPIC|COMP|FEAT|REQ)-[0-9]{3}$', requirement_id.upper()):
         return None
 
     # Lookup by human-readable ID (case-insensitive)
@@ -3096,6 +3096,43 @@ def is_org_owner(
     return role == models.MemberRole.OWNER
 
 
+def match_user_agent_pattern(user_agent: str, patterns: list[str]) -> bool:
+    """
+    Check if a user-agent string matches any of the allowed patterns.
+
+    Supports prefix matching with wildcards:
+    - "claude-desktop/*" matches "claude-desktop/1.2.3"
+    - "claude-code/*" matches "claude-code/0.1.0"
+    - Exact match also works: "claude-desktop/1.0.0" matches "claude-desktop/1.0.0"
+
+    Args:
+        user_agent: The user-agent string from the HTTP header
+        patterns: List of allowed patterns
+
+    Returns:
+        True if user_agent matches any pattern, False otherwise
+    """
+    if not patterns:
+        # Empty patterns = unrestricted
+        return True
+
+    user_agent_lower = user_agent.lower().strip()
+
+    for pattern in patterns:
+        pattern_lower = pattern.lower().strip()
+
+        if pattern_lower.endswith("/*"):
+            # Prefix match: "claude-desktop/*" matches "claude-desktop/anything"
+            prefix = pattern_lower[:-1]  # Remove the "*", keep the "/"
+            if user_agent_lower.startswith(prefix):
+                return True
+        elif pattern_lower == user_agent_lower:
+            # Exact match
+            return True
+
+    return False
+
+
 def get_agent_by_email(
     db: Session,
     email: str,
@@ -3147,33 +3184,42 @@ def check_agent_director_authorization(
     director_id: UUID,
     agent_email: str,
     organization_id: UUID,
-) -> tuple[bool, str]:
+    user_agent: Optional[str] = None,
+) -> tuple[bool, Optional[str], Optional[list[str]]]:
     """
     Check if a director is authorized to act as an agent in an organization.
 
     Authorization is granted if:
     1. Director is an owner of the organization (implicit authorization), OR
-    2. An explicit AgentDirector mapping exists
+    2. An explicit AgentDirector mapping exists AND client constraints are satisfied
+
+    CR-005/TARKA-FEAT-105: Client constraints enforcement
+    - If user_agent is provided and mapping has allowed_user_agents, the client must match
+    - Org owners bypass client constraints (implicit authorization)
+    - Null/empty allowed_user_agents means unrestricted
 
     Args:
         db: Database session
         director_id: UUID of the human user (director)
         agent_email: Email of the agent account
         organization_id: UUID of the organization
+        user_agent: Optional HTTP user-agent header for client constraint checking
 
     Returns:
-        Tuple of (is_authorized, authorization_type)
+        Tuple of (is_authorized, authorization_type, allowed_user_agents)
         - is_authorized: True if authorized, False otherwise
         - authorization_type: 'owner' (implicit), 'explicit' (mapping exists), or None
+        - allowed_user_agents: List of allowed patterns (for error messages), or None
     """
     # First, get the agent by email
     agent = get_agent_by_email(db, agent_email)
     if not agent:
-        return False, None
+        return False, None, None
 
     # Check if director is an org owner (implicit authorization)
+    # Org owners bypass client constraints
     if is_org_owner(db, director_id, organization_id):
-        return True, "owner"
+        return True, "owner", None
 
     # Check for explicit mapping
     mapping = (
@@ -3187,9 +3233,17 @@ def check_agent_director_authorization(
     )
 
     if mapping:
-        return True, "explicit"
+        allowed_patterns = mapping.allowed_user_agents
 
-    return False, None
+        # CR-005: Check client constraints if patterns are defined
+        if allowed_patterns and user_agent:
+            if not match_user_agent_pattern(user_agent, allowed_patterns):
+                # Mapping exists but client not allowed
+                return False, "client_rejected", allowed_patterns
+
+        return True, "explicit", allowed_patterns
+
+    return False, None, None
 
 
 def get_agents_for_director(
@@ -3201,7 +3255,9 @@ def get_agents_for_director(
     Get all agents a director can use in an organization.
 
     For org owners: returns all agents with authorization_type='owner'
-    For others: returns only explicitly mapped agents
+    For others: returns only explicitly mapped agents with client constraints
+
+    CR-005/TARKA-FEAT-105: Returns allowed_user_agents for each agent
 
     Args:
         db: Database session
@@ -3209,36 +3265,40 @@ def get_agents_for_director(
         organization_id: UUID of the organization
 
     Returns:
-        List of agent dicts with authorization info
+        List of agent dicts with authorization info including allowed_user_agents
     """
     all_agents = list_agents(db)
 
     # Check if director is org owner
     director_is_owner = is_org_owner(db, director_id, organization_id)
 
-    # Get explicit mappings for this director in this org
+    # Get explicit mappings for this director in this org (including allowed_user_agents)
     explicit_mappings = (
-        db.query(models.AgentDirector.agent_id)
+        db.query(models.AgentDirector)
         .filter(
             models.AgentDirector.director_id == director_id,
             models.AgentDirector.organization_id == organization_id,
         )
         .all()
     )
-    explicit_agent_ids = {m.agent_id for m in explicit_mappings}
+    # Build a dict of agent_id -> allowed_user_agents
+    explicit_mappings_dict = {
+        m.agent_id: m.allowed_user_agents for m in explicit_mappings
+    }
 
     result = []
     for agent in all_agents:
         if director_is_owner:
-            # Owners can use all agents
+            # Owners can use all agents (no client restrictions)
             result.append({
                 "id": agent.id,
                 "email": agent.email,
                 "full_name": agent.full_name,
                 "is_authorized": True,
                 "authorization_type": "owner",
+                "allowed_user_agents": None,  # Unrestricted for owners
             })
-        elif agent.id in explicit_agent_ids:
+        elif agent.id in explicit_mappings_dict:
             # Explicit mapping exists
             result.append({
                 "id": agent.id,
@@ -3246,6 +3306,7 @@ def get_agents_for_director(
                 "full_name": agent.full_name,
                 "is_authorized": True,
                 "authorization_type": "explicit",
+                "allowed_user_agents": explicit_mappings_dict[agent.id],
             })
         else:
             # Not authorized
@@ -3255,6 +3316,7 @@ def get_agents_for_director(
                 "full_name": agent.full_name,
                 "is_authorized": False,
                 "authorization_type": None,
+                "allowed_user_agents": None,
             })
 
     return result
