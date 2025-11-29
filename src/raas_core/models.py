@@ -360,7 +360,7 @@ class Project(Base):
 
     # Core fields
     name = Column(String(255), nullable=False)
-    slug = Column(String(4), nullable=False)  # 3-4 uppercase alphanumeric chars, unique within org
+    slug = Column(String(10), nullable=False)  # 3-10 uppercase alphanumeric chars, unique within org
     description = Column(Text)
     visibility = Column(
         Enum(ProjectVisibility, values_callable=lambda x: [e.value for e in x]),
