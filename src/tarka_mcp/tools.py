@@ -1849,42 +1849,8 @@ def get_tools() -> list[Tool]:
                 "required": ["requirement_id", "from_version", "to_version"]
             }
         ),
-        Tool(
-            name="mark_requirement_deployed",
-            description="Mark a requirement's deployed_version_id to track production deployment. "
-                       "\n\nCalled when a Release deploys to production. Updates deployed_version_id "
-                       "to either a specific version or the resolved version (CR-006)."
-                       "\n\nPARAMETERS:"
-                       "\n• requirement_id: UUID or human-readable ID"
-                       "\n• version_id: Optional specific version UUID (defaults to resolved version)"
-                       "\n\nRETURNS: Updated requirement with new deployed_version_id",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "requirement_id": {"type": "string", "description": "UUID or human-readable ID"},
-                    "version_id": {"type": "string", "description": "Optional: specific version UUID to mark as deployed"}
-                },
-                "required": ["requirement_id"]
-            }
-        ),
-        Tool(
-            name="batch_mark_requirements_deployed",
-            description="Batch mark multiple requirements as deployed. "
-                       "\n\nUse when a Release deploys multiple requirements to production. "
-                       "Updates deployed_version_id to resolved version for all specified requirements (CR-006)."
-                       "\n\nRETURNS: Count of successfully updated requirements",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "requirement_ids": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "List of requirement UUIDs or human-readable IDs"
-                    }
-                },
-                "required": ["requirement_ids"]
-            }
-        ),
+        # NOTE: mark_requirement_deployed and batch_mark_requirements_deployed removed (TARKA-FEAT-106).
+        # Deployment ONLY happens through Release transitions to ensure traceability.
         # CR-002 (RAAS-FEAT-104): Work Item Diffs and Conflict Detection
         Tool(
             name="get_work_item_diffs",

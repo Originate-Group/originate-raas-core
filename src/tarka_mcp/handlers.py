@@ -2069,50 +2069,8 @@ async def handle_diff_requirement_versions(
     return [TextContent(type="text", text=formatters.format_version_diff(result))], current_scope
 
 
-async def handle_mark_requirement_deployed(
-    arguments: dict,
-    client: httpx.AsyncClient,
-    current_scope: Optional[dict] = None
-) -> tuple[list[TextContent], Optional[dict]]:
-    """Mark a requirement's deployed_version_id to track production deployment."""
-    requirement_id = arguments["requirement_id"]
-    params = {}
-    if arguments.get("version_id"):
-        params["version_id"] = arguments["version_id"]
-
-    response = await client.post(f"/work-items/requirements/{requirement_id}/mark-deployed", params=params)
-    response.raise_for_status()
-    result = response.json()
-    logger.info(f"Successfully marked requirement {requirement_id} as deployed")
-
-    text = (f"Marked **{result.get('human_readable_id', requirement_id)}** as deployed\n"
-            f"Deployed version: v{result.get('deployed_version_number', '?')}")
-
-    return [TextContent(type="text", text=text)], current_scope
-
-
-async def handle_batch_mark_requirements_deployed(
-    arguments: dict,
-    client: httpx.AsyncClient,
-    current_scope: Optional[dict] = None
-) -> tuple[list[TextContent], Optional[dict]]:
-    """Batch mark multiple requirements as deployed."""
-    requirement_ids = arguments["requirement_ids"]
-
-    params = {"requirement_ids": requirement_ids}
-    response = await client.post("/work-items/requirements/batch-mark-deployed", params=params)
-    response.raise_for_status()
-    result = response.json()
-    logger.info(f"Successfully marked {result.get('updated_count', 0)} requirements as deployed")
-
-    text = (f"Batch deployment update complete\n"
-            f"Updated: {result.get('updated_count', 0)} requirements\n"
-            f"Failed: {result.get('failed_count', 0)} requirements")
-
-    if result.get('errors'):
-        text += f"\n\nErrors:\n" + "\n".join([f"- {e}" for e in result['errors']])
-
-    return [TextContent(type="text", text=text)], current_scope
+# NOTE: handle_mark_requirement_deployed and handle_batch_mark_requirements_deployed removed (TARKA-FEAT-106).
+# Deployment ONLY happens through Release transitions to ensure traceability.
 
 
 # =============================================================================
