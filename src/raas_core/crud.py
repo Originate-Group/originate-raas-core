@@ -394,15 +394,12 @@ def get_requirements(
     # CR-009: For filtering on version fields (status, title, tags, quality_score),
     # we need to join with the resolved version. Create a subquery to find each
     # requirement's resolved version (deployed > latest approved > latest).
-    from sqlalchemy import func as sqla_func, literal
 
     # Subquery to get the resolved version ID for each requirement
     # Priority: deployed_version_id > latest approved > latest
+    # Note: Must return only one column for scalar_subquery()
     resolved_version_subq = (
-        db.query(
-            models.RequirementVersion.id.label('resolved_id'),
-            models.RequirementVersion.requirement_id,
-        )
+        db.query(models.RequirementVersion.id)
         .filter(models.RequirementVersion.requirement_id == models.Requirement.id)
         .order_by(
             # Prefer deployed version (via deployed_version_id match)
