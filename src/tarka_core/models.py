@@ -191,13 +191,13 @@ class UserType(str, enum.Enum):
 class WorkItemType(str, enum.Enum):
     """Work Item type enum for categorizing implementation work.
 
-    BUG-005: Removed 'task' type - it was never specified in any requirement
-    and creates confusion with the Task entity (RAAS-COMP-065).
+    CR-007: Removed IR (use CR instead, distinguish via tags like 'billable', 'internal')
+    BUG-005: Removed 'task' type - creates confusion with Task entity (RAAS-COMP-065)
     """
 
-    IR = "ir"           # Implementation Request - new feature work
-    CR = "cr"           # Change Request - modifications to approved requirements
-    BUG = "bug"         # Bug fix
+    CR = "cr"           # Change Request - all implementation work (new features, modifications)
+    BUG = "bug"         # Bug fix - something is broken
+    DEBT = "debt"       # Technical debt - works but needs refactoring/cleanup
     RELEASE = "release" # RAAS-FEAT-102: Release bundle for coordinated deployment
 
 
@@ -1732,12 +1732,12 @@ class GitHubConfiguration(Base):
     webhook_id = Column(String(50), nullable=True)  # GitHub webhook ID
 
     # Label mapping for Work Item types
-    # Structure: {"ir": "raas:ir", "cr": "raas:cr", "bug": "raas:bug", "task": "raas:task"}
+    # Structure: {"cr": "raas:cr", "bug": "raas:bug", "debt": "raas:debt", "release": "raas:release"}
     label_mapping = Column(JSONB, nullable=False, default={
-        "ir": "raas:implementation-request",
         "cr": "raas:change-request",
         "bug": "raas:bug",
-        "task": "raas:task",
+        "debt": "raas:technical-debt",
+        "release": "raas:release",
     })
 
     # Sync settings

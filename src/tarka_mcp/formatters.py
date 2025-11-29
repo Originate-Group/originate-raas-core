@@ -127,12 +127,12 @@ def format_work_item(wi: dict) -> str:
     # Get human-readable ID
     readable_id = wi.get('human_readable_id', 'NO-ID')
 
-    # Add emoji prefix based on type
+    # Add emoji prefix based on type (CR-007: removed IR/task, added DEBT)
     type_emoji = {
-        'ir': '🚀',      # Implementation Request
         'cr': '📝',      # Change Request
         'bug': '🐛',     # Bug
-        'task': '✅',    # Task
+        'debt': '🔧',    # Technical Debt
+        'release': '📦', # Release
     }.get(wi.get('work_item_type', ''), '📋')
 
     # Basic info

@@ -113,10 +113,10 @@ async def create_configuration(
         auth_type=data.auth_type,
         encrypted_credentials=encrypted_creds,
         label_mapping=data.label_mapping or {
-            "ir": "raas:implementation-request",
             "cr": "raas:change-request",
             "bug": "raas:bug",
-            "task": "raas:task",
+            "debt": "raas:technical-debt",
+            "release": "raas:release",
         },
         auto_create_issues=data.auto_create_issues,
         sync_pr_status=data.sync_pr_status,

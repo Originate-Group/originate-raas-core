@@ -375,11 +375,11 @@ async def create_work_item(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Work Item not found for release inclusion: {wi_identifier}"
                 )
-            # Only allow IR, CR, BUG to be included in releases (not TASK or RELEASE)
-            if included_wi.work_item_type not in [WorkItemType.IR, WorkItemType.CR, WorkItemType.BUG]:
+            # Only allow CR, BUG, DEBT to be included in releases (not RELEASE itself)
+            if included_wi.work_item_type not in [WorkItemType.CR, WorkItemType.BUG, WorkItemType.DEBT]:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Only IR, CR, and BUG work items can be included in releases. "
+                    detail=f"Only CR, BUG, and DEBT work items can be included in releases. "
                            f"'{included_wi.human_readable_id}' is type '{included_wi.work_item_type.value}'"
                 )
             included_items.append(included_wi)
@@ -649,11 +649,11 @@ async def update_work_item(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=f"Work Item not found for release inclusion: {wi_identifier}"
                     )
-                # Only allow IR, CR, BUG to be included in releases
-                if included_wi.work_item_type not in [WorkItemType.IR, WorkItemType.CR, WorkItemType.BUG]:
+                # Only allow CR, BUG, DEBT to be included in releases
+                if included_wi.work_item_type not in [WorkItemType.CR, WorkItemType.BUG, WorkItemType.DEBT]:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Only IR, CR, and BUG work items can be included in releases. "
+                        detail=f"Only CR, BUG, and DEBT work items can be included in releases. "
                                f"'{included_wi.human_readable_id}' is type '{included_wi.work_item_type.value}'"
                     )
                 new_included.append(included_wi)
@@ -669,9 +669,9 @@ async def update_work_item(
                 detail=str(e)
             )
 
-        # RAAS-FEAT-102: Deployment gate - IR/CR/BUG must be in a Release to deploy
+        # RAAS-FEAT-102: Deployment gate - CR/BUG/DEBT must be in a Release to deploy
         if data.status == WorkItemStatus.DEPLOYED:
-            if work_item.work_item_type in [WorkItemType.IR, WorkItemType.CR, WorkItemType.BUG]:
+            if work_item.work_item_type in [WorkItemType.CR, WorkItemType.BUG, WorkItemType.DEBT]:
                 db.refresh(work_item, ["included_in_releases"])
                 if not work_item.included_in_releases:
                     raise HTTPException(
@@ -813,9 +813,9 @@ async def transition_work_item(
             detail=str(e)
         )
 
-    # RAAS-FEAT-102: Deployment gate - IR/CR/BUG must be in a Release to deploy
+    # RAAS-FEAT-102: Deployment gate - CR/BUG/DEBT must be in a Release to deploy
     if data.new_status == WorkItemStatus.DEPLOYED:
-        if work_item.work_item_type in [WorkItemType.IR, WorkItemType.CR, WorkItemType.BUG]:
+        if work_item.work_item_type in [WorkItemType.CR, WorkItemType.BUG, WorkItemType.DEBT]:
             # Check if this work item is included in a Release
             db.refresh(work_item, ["included_in_releases"])
             if not work_item.included_in_releases:

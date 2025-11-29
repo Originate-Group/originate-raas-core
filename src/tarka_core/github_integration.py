@@ -131,10 +131,10 @@ class GitHubClient:
         """
         # Build issue title with type prefix
         type_prefix = {
-            WorkItemType.IR: "IR",
             WorkItemType.CR: "CR",
             WorkItemType.BUG: "BUG",
-            WorkItemType.TASK: "TASK",
+            WorkItemType.DEBT: "DEBT",
+            WorkItemType.RELEASE: "REL",
         }.get(work_item.work_item_type, "WI")
 
         title = f"[{type_prefix}] {work_item.title}"

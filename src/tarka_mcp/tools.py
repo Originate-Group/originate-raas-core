@@ -894,9 +894,9 @@ def get_tools() -> list[Tool]:
             name="update_requirement",
             description="Update an existing requirement using properly formatted markdown OR update specific fields directly. "
                        "Accepts both UUID and human-readable ID. "
-                       "\n\nPERSONA REQUIRED FOR STATUS CHANGES: If your update includes a status change "
-                       "(either via status field or in markdown frontmatter), you MUST call select_persona() first. "
-                       "Without a persona set, status transitions will return 403 Forbidden."
+                       "\n\nAGENT REQUIRED FOR STATUS CHANGES: If your update includes a status change "
+                       "(either via status field or in markdown frontmatter), you MUST call select_agent() first. "
+                       "Without an agent set, status transitions will return 403 Forbidden."
                        "\n\nCOMMON PATTERNS:"
                        "\n• Full content update: get_requirement() → modify content field → update_requirement(content=...)"
                        "\n• Add dependencies: update_requirement(requirement_id='...', depends_on=['uuid1', 'uuid2'])"
@@ -1039,8 +1039,8 @@ def get_tools() -> list[Tool]:
             name="transition_status",
             description="Transition a requirement to a new lifecycle status (convenience tool, simpler than update_requirement). "
                        "Accepts both UUID and human-readable ID. "
-                       "\n\nPREREQUISITE: You MUST call select_persona() first to set your workflow persona. "
-                       "Without a persona set, this tool will return 403 Forbidden."
+                       "\n\nPREREQUISITE: You MUST call select_agent() first to set your acting agent. "
+                       "Without an agent set, this tool will return 403 Forbidden."
                        "\n\nSTATUS WORKFLOW (CR-004 Phase 4: 4-state model):"
                        "\n• Forward: draft → review → approved"
                        "\n• Back: approved → review → draft (for rework)"
@@ -1049,26 +1049,26 @@ def get_tools() -> list[Tool]:
                        "\n• Same-status transitions allowed (no-op)"
                        "\n\nIMPORTANT: Implementation states (in_progress, implemented, validated, deployed) are now"
                        "\ntracked on Work Items, NOT Requirements. Requirements are specifications only."
-                       "\n\nPERSONA AUTHORIZATION:"
-                       "\n• Different transitions require different personas (set via select_persona)"
+                       "\n\nAGENT AUTHORIZATION:"
+                       "\n• Different transitions require different agent roles (set via select_agent)"
                        "\n• Developer: draft→review"
                        "\n• Product Owner: review→approved, approved→deprecated"
                        "\n• Enterprise Architect: all transitions"
                        "\n\nCOMMON PATTERNS:"
-                       "\n• select_persona(persona='developer') → transition_status(..., new_status='review')"
-                       "\n• select_persona(persona='product_owner') → transition_status(..., new_status='approved')"
+                       "\n• select_agent(agent_email='developer@tarka.internal') → transition_status(..., new_status='review')"
+                       "\n• select_agent(agent_email='ea@tarka.internal') → transition_status(..., new_status='approved')"
                        "\n\nWHEN TO USE:"
                        "\n• Use this tool for simple status-only changes (no other modifications)"
                        "\n• Use update_requirement() if you need to change content, dependencies, or other fields"
                        "\n\nRETURNS: Updated requirement object"
                        "\n\nRELATED TOOLS:"
-                       "\n• select_persona() - MUST be called first to set persona"
-                       "\n• get_persona() - check current persona before transitioning"
+                       "\n• select_agent() - MUST be called first to set agent"
+                       "\n• get_agent() - check current agent before transitioning"
                        "\n• update_requirement() - for full updates including status"
                        "\n• Work Item tools for implementation tracking"
                        "\n\nERRORS:"
-                       "\n• 403: No persona set (call select_persona first)"
-                       "\n• 403: Persona not authorized for this transition"
+                       "\n• 403: No agent set (call select_agent first)"
+                       "\n• 403: Agent not authorized for this transition"
                        "\n• 404: Requirement not found"
                        "\n• 400: Invalid state transition (e.g., draft → approved without review)"
                        "\n• 400: Invalid status value (not one of 4 valid statuses)",
@@ -1673,7 +1673,7 @@ def get_tools() -> list[Tool]:
                 "properties": {
                     "organization_id": {"type": "string", "description": "Filter by organization UUID"},
                     "project_id": {"type": "string", "description": "Filter by project UUID"},
-                    "work_item_type": {"type": "string", "enum": ["ir", "cr", "bug", "task"], "description": "Filter by type"},
+                    "work_item_type": {"type": "string", "enum": ["cr", "bug", "debt", "release"], "description": "Filter by type"},
                     "status": {"type": "string", "enum": ["created", "in_progress", "implemented", "validated", "deployed", "completed", "cancelled"], "description": "Filter by status"},
                     "assigned_to": {"type": "string", "description": "Filter by assigned user UUID"},
                     "search": {"type": "string", "description": "Search in title and description"},
@@ -1687,12 +1687,12 @@ def get_tools() -> list[Tool]:
         ),
         Tool(
             name="get_work_item",
-            description="Get a Work Item by UUID or human-readable ID (e.g., 'IR-001', 'CR-005'). "
+            description="Get a Work Item by UUID or human-readable ID (e.g., 'CR-001', 'CR-005'). "
                        "\n\nRETURNS: Full work item details including affected requirements and implementation refs.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "work_item_id": {"type": "string", "description": "UUID or human-readable ID (e.g., 'IR-001')"}
+                    "work_item_id": {"type": "string", "description": "UUID or human-readable ID (e.g., 'CR-001')"}
                 },
                 "required": ["work_item_id"]
             }
@@ -1701,12 +1701,14 @@ def get_tools() -> list[Tool]:
             name="create_work_item",
             description="Create a new Work Item. "
                        "\n\nWork Item types:"
-                       "\n• ir: Implementation Request - new feature implementation"
-                       "\n• cr: Change Request - modify existing requirements (triggers merge on completion)"
-                       "\n• bug: Bug fix"
-                       "\n• task: General task"
+                       "\n• cr: Change Request - all implementation work (new features, modifications)"
+                       "\n• bug: Bug fix - something is broken"
+                       "\n• debt: Technical debt - works but needs refactoring/cleanup"
+                       "\n• release: Release bundle for coordinated deployment"
                        "\n\nAFFECTS: List requirement IDs (UUID or human-readable) that this work item affects. "
                        "For CRs, these requirements will be updated when the CR is completed."
+                       "\n\nINCLUDES (Release only): List of work item IDs to include in a release. "
+                       "When a release is completed, all included work items transition to 'completed'."
                        "\n\nPROPOSED_CONTENT (CR only): For CRs, provide new markdown content for affected requirements. "
                        "Format: {requirement_id: \"new markdown content\"}",
             inputSchema={
@@ -1714,7 +1716,7 @@ def get_tools() -> list[Tool]:
                 "properties": {
                     "organization_id": {"type": "string", "description": "Organization UUID (required)"},
                     "project_id": {"type": "string", "description": "Project UUID (optional)"},
-                    "work_item_type": {"type": "string", "enum": ["ir", "cr", "bug", "task"], "description": "Type of work item (required)"},
+                    "work_item_type": {"type": "string", "enum": ["cr", "bug", "debt", "release"], "description": "Type of work item (required)"},
                     "title": {"type": "string", "description": "Work item title (required)"},
                     "description": {"type": "string", "description": "Detailed description"},
                     "priority": {"type": "string", "enum": ["low", "medium", "high", "critical"], "description": "Priority (default: medium)"},
@@ -1729,7 +1731,11 @@ def get_tools() -> list[Tool]:
         Tool(
             name="update_work_item",
             description="Update a Work Item's title, description, priority, assignment, or affects list. "
-                       "\n\nFor status changes, use transition_work_item instead.",
+                       "\n\nFor status changes, use transition_work_item instead."
+                       "\n\nINCLUDES (Release only): Use the `includes` field to add/update work items in a Release. "
+                       "IMPORTANT: Tags do NOT create membership - only the `includes` field creates the relationship "
+                       "required for deployment cascade. When a Release is completed, all work items in `includes` "
+                       "automatically transition to 'completed'.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -1740,6 +1746,7 @@ def get_tools() -> list[Tool]:
                     "assigned_to": {"type": "string", "description": "New assigned user UUID"},
                     "tags": {"type": "array", "items": {"type": "string"}, "description": "New tags (replaces existing)"},
                     "affects": {"type": "array", "items": {"type": "string"}, "description": "New affected requirements (replaces existing)"},
+                    "includes": {"type": "array", "items": {"type": "string"}, "description": "For Releases: work item IDs to include (replaces existing). Tags do NOT create membership."},
                     "proposed_content": {"type": "object", "description": "For CRs: updated proposed content"},
                     "implementation_refs": {"type": "object", "description": "GitHub references: {github_issue_url, pr_urls[], commit_shas[], release_tag}"}
                 },
@@ -1753,8 +1760,15 @@ def get_tools() -> list[Tool]:
                        "\n\nSPECIAL TRANSITIONS:"
                        "\n• cancelled: Can be reached from any non-terminal state"
                        "\n• completed (for CRs): Triggers automatic merge of proposed content to affected requirements"
+                       "\n• completed (for Releases): Cascades 'completed' to all included work items that are 'validated'"
+                       "\n\nDEPLOYMENT GATE (CR/BUG/DEBT):"
+                       "\n• CR, BUG, and DEBT work items must be included in a Release to reach 'deployed' status"
+                       "\n• The containing Release must be deployed first"
+                       "\n• Use the `includes` field on Releases - tags do NOT create membership"
                        "\n\nERRORS:"
-                       "\n• 400: Invalid transition (must follow lifecycle)",
+                       "\n• 400: Invalid transition (must follow lifecycle)"
+                       "\n• 400: Cannot deploy - work item not in a Release (for CR/BUG/DEBT)"
+                       "\n• 400: Cannot deploy - containing Release not deployed yet",
             inputSchema={
                 "type": "object",
                 "properties": {
