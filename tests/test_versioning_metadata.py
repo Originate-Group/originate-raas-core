@@ -307,11 +307,11 @@ Same description.
         assert content_has_changed(cleaned_old, cleaned_new)
 
 
-class TestStatusTagInjection:
-    """Tests for TARKA-FEAT-106: Status Tag Injection."""
+class TestStatusInjection:
+    """Tests for TARKA-FEAT-106: Status Injection (status field override, not separate tag)."""
 
-    def test_status_tag_injected_into_frontmatter(self):
-        """TARKA-FEAT-106: Status tag should be injected into frontmatter."""
+    def test_status_injected_into_frontmatter(self):
+        """TARKA-FEAT-106: Status should be injected into frontmatter."""
         stored_content = """---
 type: feature
 title: Test Feature
@@ -321,20 +321,21 @@ parent_id: 12345678-1234-1234-1234-123456789012
 ## Description
 Test feature description.
 """
+        # When deployed with Release, status becomes deployed-REL-XXX
         injected = inject_database_state(
             stored_content,
-            status="approved",
+            status="deployed-REL-001",  # Effective status passed from schema
             human_readable_id="RAAS-FEAT-001",
             tags=["tag1"],
-            status_tag="deployed-v1"
         )
         parsed = parse_markdown(injected)
 
-        # Status tag should be in frontmatter
-        assert parsed["frontmatter"]["status_tag"] == "deployed-v1"
+        # Status should be overridden, no separate status_tag field
+        assert parsed["frontmatter"]["status"] == "deployed-REL-001"
+        assert "status_tag" not in parsed["frontmatter"]
 
-    def test_status_tag_draft_injected(self):
-        """Draft status tag should be injected for draft requirements."""
+    def test_lifecycle_status_injected(self):
+        """Lifecycle status should be injected for non-deployed requirements."""
         stored_content = """---
 type: feature
 title: Test Feature
@@ -347,14 +348,14 @@ Test feature description.
         injected = inject_database_state(
             stored_content,
             status="draft",
-            status_tag="draft"
         )
         parsed = parse_markdown(injected)
 
-        assert parsed["frontmatter"]["status_tag"] == "draft"
+        assert parsed["frontmatter"]["status"] == "draft"
+        assert "status_tag" not in parsed["frontmatter"]
 
-    def test_status_tag_deployed_format(self):
-        """Deployed status tag should follow deployed-v{N} format."""
+    def test_approved_status_when_not_deployed(self):
+        """Approved status shows 'approved' when not deployed."""
         stored_content = """---
 type: feature
 title: Test Feature
@@ -367,12 +368,34 @@ Test feature description.
         injected = inject_database_state(
             stored_content,
             status="approved",
-            status_tag="deployed-v3"
         )
         parsed = parse_markdown(injected)
 
-        assert parsed["frontmatter"]["status_tag"] == "deployed-v3"
-        assert parsed["frontmatter"]["status_tag"].startswith("deployed-")
+        # Should show approved since not deployed
+        assert parsed["frontmatter"]["status"] == "approved"
+        assert "status_tag" not in parsed["frontmatter"]
+
+    def test_deployed_status_without_release(self):
+        """Deployed status shows 'deployed' when no Release linked."""
+        stored_content = """---
+type: feature
+title: Test Feature
+parent_id: 12345678-1234-1234-1234-123456789012
+---
+
+## Description
+Test feature description.
+"""
+        # When deployed but no Release linked, effective status is just 'deployed'
+        injected = inject_database_state(
+            stored_content,
+            status="deployed",  # Effective status from schema when deployed_version_id set but no Release
+        )
+        parsed = parse_markdown(injected)
+
+        # Should show deployed (without REL-xxx) since Release not linked
+        assert parsed["frontmatter"]["status"] == "deployed"
+        assert "status_tag" not in parsed["frontmatter"]
 
 
 class TestReservedTagValidation:
@@ -430,123 +453,8 @@ class TestReservedTagValidation:
             validate_tags_not_reserved(["sprint-1", "approved", "backend"])
 
 
-class TestVersioningStatusTag:
-    """Tests for versioning.py get_status_tag function."""
-
-    from tarka_core.versioning import get_status_tag
-
-    def test_get_status_tag_returns_deployed_with_release(self):
-        """get_status_tag should return deployed-REL-XXX when release_hrid provided."""
-        from tarka_core.versioning import get_status_tag
-        from unittest.mock import MagicMock
-
-        # Mock requirement with deployed version
-        req = MagicMock()
-        req.deployed_version_id = "version-uuid-123"
-
-        version = MagicMock()
-        version.id = "version-uuid-123"
-        version.version_number = 5
-        version.status.value = "approved"
-
-        tag = get_status_tag(req, version, release_hrid="REL-001")
-        assert tag == "deployed-REL-001"
-
-    def test_get_status_tag_returns_deployed_version_fallback(self):
-        """get_status_tag should return deployed-v{N} when no release_hrid."""
-        from tarka_core.versioning import get_status_tag
-        from unittest.mock import MagicMock
-
-        req = MagicMock()
-        req.deployed_version_id = "version-uuid-123"
-
-        version = MagicMock()
-        version.id = "version-uuid-123"
-        version.version_number = 3
-        version.status.value = "approved"
-
-        tag = get_status_tag(req, version)
-        assert tag == "deployed-v3"
-
-    def test_get_status_tag_returns_lifecycle_status(self):
-        """get_status_tag should return lifecycle status when not deployed."""
-        from tarka_core.versioning import get_status_tag
-        from tarka_core.models import LifecycleStatus
-        from unittest.mock import MagicMock
-
-        req = MagicMock()
-        req.deployed_version_id = None  # Not deployed
-
-        # Test each status
-        for status, expected_tag in [
-            (LifecycleStatus.DRAFT, "draft"),
-            (LifecycleStatus.REVIEW, "review"),
-            (LifecycleStatus.APPROVED, "approved"),
-            (LifecycleStatus.DEPRECATED, "deprecated"),
-        ]:
-            version = MagicMock()
-            version.id = "some-other-uuid"
-            version.status = status
-
-            tag = get_status_tag(req, version)
-            assert tag == expected_tag, f"Expected {expected_tag} for status {status}"
-
-
-class TestReleaseTrackingStatusTag:
-    """Tests for TARKA-FEAT-106: Release tracking in status_tag."""
-
-    def test_requirement_status_tag_with_release(self):
-        """Requirement.status_tag should return deployed-REL-XXX when deployed_by_release is set."""
-        from unittest.mock import MagicMock, PropertyMock
-
-        # Create mock requirement
-        req = MagicMock()
-        req.deployed_version_id = "version-uuid-123"
-        req.deployed_version_number = 5
-
-        # Mock the deployed_by_release relationship
-        release = MagicMock()
-        release.human_readable_id = "REL-042"
-        req.deployed_by_release = release
-
-        # Mock the status property
-        from tarka_core.models import LifecycleStatus
-        type(req).status = PropertyMock(return_value=LifecycleStatus.APPROVED)
-
-        # Import the actual status_tag property logic and test
-        # Since we can't easily test the property on a mock, verify the logic
-        if req.deployed_version_id is not None:
-            if req.deployed_by_release and req.deployed_by_release.human_readable_id:
-                tag = f"deployed-{req.deployed_by_release.human_readable_id}"
-            else:
-                tag = f"deployed-v{req.deployed_version_number}"
-        else:
-            tag = "approved"
-
-        assert tag == "deployed-REL-042"
-
-    def test_requirement_status_tag_without_release_fallback(self):
-        """Requirement.status_tag should fall back to deployed-v{N} when no release."""
-        from unittest.mock import MagicMock, PropertyMock
-
-        req = MagicMock()
-        req.deployed_version_id = "version-uuid-123"
-        req.deployed_version_number = 3
-        req.deployed_by_release = None  # No release tracked
-
-        from tarka_core.models import LifecycleStatus
-        type(req).status = PropertyMock(return_value=LifecycleStatus.APPROVED)
-
-        # Test the logic
-        if req.deployed_version_id is not None:
-            if req.deployed_by_release and req.deployed_by_release.human_readable_id:
-                tag = f"deployed-{req.deployed_by_release.human_readable_id}"
-            else:
-                tag = f"deployed-v{req.deployed_version_number}"
-        else:
-            tag = "approved"
-
-        assert tag == "deployed-v3"
+class TestReleaseTracking:
+    """Tests for TARKA-FEAT-106: Release tracking."""
 
     def test_update_deployed_version_pointer_sets_release_id(self):
         """update_deployed_version_pointer should set deployed_by_release_id when provided."""

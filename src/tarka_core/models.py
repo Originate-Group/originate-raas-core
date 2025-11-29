@@ -683,44 +683,6 @@ class Requirement(Base):
         v = self.resolve_version()
         return v.created_by_user_id if v else None
 
-    @property
-    def status_tag(self) -> str:
-        """Compute status tag for this requirement (TARKA-FEAT-106).
-
-        Status tag injection rules (precedence order):
-        1. deployed-REL-XXX - This version is deployed by Release REL-XXX
-        2. deployed-v{N} - Deployed but Release info unavailable (fallback)
-        3. deprecated - This requirement has been retired
-        4. approved - Approved but not yet in a deployed Release
-        5. review - Under review
-        6. draft - Work in progress
-
-        Key principle: deployed supersedes approved because deployment implies approval.
-        The Release identifier provides traceability to which Release deployed this.
-        """
-        # If deployed_version_id is set, we're viewing the deployed version
-        # (because resolve_version() returns deployed version when set)
-        if self.deployed_version_id is not None:
-            # TARKA-FEAT-106: Use Release HRID if available
-            if self.deployed_by_release and self.deployed_by_release.human_readable_id:
-                return f"deployed-{self.deployed_by_release.human_readable_id}"
-            # Fallback to version number if Release not tracked
-            version_number = self.deployed_version_number
-            if version_number is not None:
-                return f"deployed-v{version_number}"
-
-        # Use lifecycle status as status_tag
-        status = self.status
-        if status == LifecycleStatus.DEPRECATED:
-            return "deprecated"
-        elif status == LifecycleStatus.APPROVED:
-            return "approved"
-        elif status == LifecycleStatus.REVIEW:
-            return "review"
-        else:
-            return "draft"
-
-
 class ChangeType(str, enum.Enum):
     """Change type enum for history tracking."""
 

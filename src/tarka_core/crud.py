@@ -46,7 +46,6 @@ from .versioning import (
     should_regress_to_draft,
     content_has_changed,
     resolve_version,
-    get_status_tag,
     get_latest_version,
 )
 
