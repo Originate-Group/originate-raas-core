@@ -355,7 +355,7 @@ Test feature description.
         assert "status_tag" not in parsed["frontmatter"]
 
     def test_approved_status_when_not_deployed(self):
-        """Approved status shows 'approved' when not deployed."""
+        """Approved status shows 'approved' when no Release linked."""
         stored_content = """---
 type: feature
 title: Test Feature
@@ -371,30 +371,8 @@ Test feature description.
         )
         parsed = parse_markdown(injected)
 
-        # Should show approved since not deployed
+        # Should show approved (not deployed-*) since no Release is linked
         assert parsed["frontmatter"]["status"] == "approved"
-        assert "status_tag" not in parsed["frontmatter"]
-
-    def test_deployed_status_without_release(self):
-        """Deployed status shows 'deployed' when no Release linked."""
-        stored_content = """---
-type: feature
-title: Test Feature
-parent_id: 12345678-1234-1234-1234-123456789012
----
-
-## Description
-Test feature description.
-"""
-        # When deployed but no Release linked, effective status is just 'deployed'
-        injected = inject_database_state(
-            stored_content,
-            status="deployed",  # Effective status from schema when deployed_version_id set but no Release
-        )
-        parsed = parse_markdown(injected)
-
-        # Should show deployed (without REL-xxx) since Release not linked
-        assert parsed["frontmatter"]["status"] == "deployed"
         assert "status_tag" not in parsed["frontmatter"]
 
 

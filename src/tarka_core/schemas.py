@@ -148,17 +148,14 @@ class RequirementResponse(RequirementBase):
 
         Status tag injection rules:
         - If deployed with a Release: status becomes 'deployed-REL-XXX'
-        - If deployed without Release: status becomes 'deployed'
         - Otherwise: use the lifecycle status (draft, review, approved, deprecated)
 
         The deployed status supersedes 'approved' because deployment implies approval.
+        Requires proper Release linkage - no fallback to generic 'deployed'.
         """
-        # If deployed, show deployed status (with or without Release)
-        if self.deployed_version_id is not None:
-            if self.deployed_by_release_hrid:
-                return f"deployed-{self.deployed_by_release_hrid}"
-            else:
-                return "deployed"
+        # If deployed and we have the Release HRID, use deployed-REL-XXX format
+        if self.deployed_version_id is not None and self.deployed_by_release_hrid:
+            return f"deployed-{self.deployed_by_release_hrid}"
 
         # Otherwise use the lifecycle status
         return self.status.value if hasattr(self.status, 'value') else str(self.status)
