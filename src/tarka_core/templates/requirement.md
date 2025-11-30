@@ -6,7 +6,7 @@ tags: {tags}
 depends_on: []
 # IMPORTANT: Populate dependencies during creation, especially in batch operations!
 # List requirement UUIDs or human-readable IDs this requirement depends on
-# Example: ["RAAS-REQ-001", "RAAS-FEAT-028"]
+# Example: ["PROJ-REQ-001", "PROJ-FEAT-028"]
 # Missing dependencies during batch creation causes implementation issues later
 adheres_to: []
 # OPTIONAL: List guardrails this requirement adheres to

@@ -5,7 +5,7 @@ tags: {tags}
 depends_on: []
 # OPTIONAL: List epic UUIDs or human-readable IDs this epic depends on
 # Epic dependencies are rare (cross-cutting concerns, shared infrastructure)
-# Example: ["RAAS-EPIC-001", "RAAS-EPIC-005"]
+# Example: ["PROJ-EPIC-001", "PROJ-EPIC-005"]
 adheres_to: []
 # OPTIONAL: List guardrails this requirement adheres to
 # Can use UUID (e.g., "123e4567-e89b-12d3-a456-426614174000")
