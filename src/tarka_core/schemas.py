@@ -108,6 +108,9 @@ class RequirementListItem(BaseModel):
     # Versioning fields (CR-006: Version Model Simplification)
     content_hash: Optional[str] = Field(None, description="SHA-256 hash of current content for conflict detection")
     deployed_version_id: Optional[UUID] = Field(None, description="UUID of the version deployed to production")
+    # BUG-019: Version number fields for efficient version state assessment
+    version_number: Optional[int] = Field(None, description="Version number of the resolved version (deployed > approved > latest)")
+    total_versions: int = Field(0, description="Total count of versions for this requirement")
     # TARKA-FEAT-106: Release tracking for status injection
     deployed_by_release_id: Optional[UUID] = Field(None, description="UUID of the Release that deployed this version")
     deployed_by_release_hrid: Optional[str] = Field(None, description="Human-readable ID of the Release (e.g., REL-001)")
@@ -137,6 +140,9 @@ class RequirementResponse(RequirementBase):
     deployed_version_id: Optional[UUID] = Field(None, description="UUID of the version deployed to production")
     deployed_version_number: Optional[int] = Field(None, description="Version number of the deployed version")
     has_pending_changes: bool = Field(False, description="True if newer versions exist beyond deployed version")
+    # BUG-019: Version number fields for efficient version state assessment
+    version_number: Optional[int] = Field(None, description="Version number of the resolved version (deployed > approved > latest)")
+    total_versions: int = Field(0, description="Total count of versions for this requirement")
     # TARKA-FEAT-106: Release tracking for status injection
     deployed_by_release_id: Optional[UUID] = Field(None, description="UUID of the Release that deployed this version")
     deployed_by_release_hrid: Optional[str] = Field(None, description="Human-readable ID of the Release (e.g., REL-001)")

@@ -696,6 +696,17 @@ class Requirement(Base):
         v = self.resolve_version()
         return v.created_by_user_id if v else None
 
+    @property
+    def version_number(self) -> Optional[int]:
+        """Get version number of the resolved version (BUG-019)."""
+        v = self.resolve_version()
+        return v.version_number if v else None
+
+    @property
+    def total_versions(self) -> int:
+        """Get total count of versions for this requirement (BUG-019)."""
+        return len(self.versions) if self.versions else 0
+
 class ChangeType(str, enum.Enum):
     """Change type enum for history tracking."""
 
