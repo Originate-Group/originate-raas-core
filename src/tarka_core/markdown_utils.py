@@ -580,15 +580,26 @@ def extract_acceptance_criteria(content: str) -> list[dict]:
 
     ac_section = ac_match.group(1)
 
-    # Extract checkbox items
+    # Extract checkbox items with category tracking
     # Pattern matches: - [ ] text or - [x] text or - [X] text
     checkbox_pattern = r'^-\s*\[([ xX])\]\s*(.+?)$'
+    # Pattern matches subsection headers: ### Category Name
+    subsection_pattern = r'^###\s+(.+)$'
 
     criteria_list = []
     ordinal = 1
+    current_category = None  # Track current subsection header
 
     for line in ac_section.split('\n'):
         line = line.strip()
+
+        # Check for subsection header (category)
+        subsection_match = re.match(subsection_pattern, line)
+        if subsection_match:
+            current_category = subsection_match.group(1).strip()
+            continue
+
+        # Check for checkbox item
         match = re.match(checkbox_pattern, line)
         if match:
             checkbox_state = match.group(1)
@@ -608,7 +619,122 @@ def extract_acceptance_criteria(content: str) -> list[dict]:
                 'criteria_text': criteria_text,
                 'met': met,
                 'ordinal': ordinal,
+                'category': current_category,  # May be None if no subsection
             })
             ordinal += 1
 
     return criteria_list
+
+
+def strip_acceptance_criteria_from_content(content: str) -> str:
+    """Strip Acceptance Criteria section from markdown content (CR-017).
+
+    Removes the entire AC section content (checkboxes AND subsection headers).
+    The ACs and their categories are stored in the acceptance_criteria table
+    and injected back on read with current met status.
+
+    This enables DRY storage: ACs exist only in the AC table, not duplicated
+    in content. Met status can change without modifying content.
+
+    Args:
+        content: The markdown content to strip ACs from
+
+    Returns:
+        Content with AC section replaced by placeholder
+    """
+    if not content:
+        return content
+
+    # Find Acceptance Criteria section
+    ac_section_pattern = r'(##\s+Acceptance\s+Criteria\s*\n)(.*?)(?=\n##(?!#)|\n#\s|\Z)'
+    ac_match = re.search(ac_section_pattern, content, re.DOTALL | re.IGNORECASE)
+
+    if not ac_match:
+        return content
+
+    ac_header = ac_match.group(1)
+    section_start = ac_match.start()
+    section_end = ac_match.end()
+
+    # Replace entire AC section with just header and placeholder
+    new_ac_section = ac_header + "\n<!-- AC content injected from acceptance_criteria table -->\n"
+
+    return content[:section_start] + new_ac_section + content[section_end:]
+
+
+def inject_acceptance_criteria_into_content(
+    content: str,
+    acceptance_criteria: list,
+) -> str:
+    """Inject Acceptance Criteria from AC table back into markdown content (CR-017).
+
+    Reconstructs the AC section with current met status from the AC records,
+    grouped by category (subsection headers) to preserve author's structure.
+
+    This is called on read operations to present a complete requirement.
+
+    Args:
+        content: The stored markdown content (with ACs stripped)
+        acceptance_criteria: List of AC records with criteria_text, met, ordinal, category
+
+    Returns:
+        Content with AC checkboxes injected showing current met status
+    """
+    if not content or not acceptance_criteria:
+        return content
+
+    # Find AC section placeholder
+    ac_section_pattern = r'(##\s+Acceptance\s+Criteria\s*\n)(.*?)(?=\n##(?!#)|\n#\s|\Z)'
+    ac_match = re.search(ac_section_pattern, content, re.DOTALL | re.IGNORECASE)
+
+    if not ac_match:
+        return content
+
+    ac_header = ac_match.group(1)
+    section_start = ac_match.start()
+    section_end = ac_match.end()
+
+    # Sort ACs by ordinal to maintain original order
+    def get_ordinal(ac):
+        if hasattr(ac, 'ordinal'):
+            return ac.ordinal
+        return ac.get('ordinal', 0)
+
+    sorted_acs = sorted(acceptance_criteria, key=get_ordinal)
+
+    # Group ACs by category, preserving order
+    from collections import OrderedDict
+    categories = OrderedDict()  # category -> list of ACs
+
+    for ac in sorted_acs:
+        # Handle both dict and object access
+        if hasattr(ac, 'category'):
+            category = ac.category
+            criteria_text = ac.criteria_text
+            met = ac.met
+        else:
+            category = ac.get('category')
+            criteria_text = ac.get('criteria_text', '')
+            met = ac.get('met', False)
+
+        if category not in categories:
+            categories[category] = []
+
+        checkbox = '[x]' if met else '[ ]'
+        categories[category].append(f"- {checkbox} {criteria_text}")
+
+    # Build AC section content grouped by category
+    ac_lines = []
+    for category, items in categories.items():
+        if category:
+            # Add subsection header
+            ac_lines.append(f"### {category}")
+        ac_lines.extend(items)
+        ac_lines.append("")  # Blank line after each category
+
+    new_ac_content = '\n'.join(ac_lines).rstrip()
+
+    # Reconstruct section: header + generated content
+    new_section = ac_header + "\n" + new_ac_content + "\n"
+
+    return content[:section_start] + new_section + content[section_end:]

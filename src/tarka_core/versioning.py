@@ -94,9 +94,14 @@ def create_requirement_version(
     """
     # Import here to avoid circular imports
     from .quality import calculate_quality_score
+    from .markdown_utils import extract_acceptance_criteria, strip_acceptance_criteria_from_content
 
-    content_hash = compute_content_hash(content)
-    content_length = len(content) if content else 0
+    # CR-017: Extract ACs before stripping, then strip from content for DRY storage
+    acceptance_criteria = extract_acceptance_criteria(content)
+    stripped_content = strip_acceptance_criteria_from_content(content) if acceptance_criteria else content
+
+    content_hash = compute_content_hash(stripped_content)
+    content_length = len(stripped_content) if stripped_content else 0
     quality_score = calculate_quality_score(content_length, requirement.type)
     version_number = get_next_version_number(db, requirement.id)
 
@@ -104,7 +109,7 @@ def create_requirement_version(
         requirement_id=requirement.id,
         version_number=version_number,
         status=status,  # CR-006: Status lives on versions
-        content=content,
+        content=stripped_content,  # CR-017: Store with ACs stripped
         content_hash=content_hash,
         title=title,
         description=description,
@@ -128,10 +133,7 @@ def create_requirement_version(
         f"{f' from work item {source_work_item_id}' if source_work_item_id else ''}"
     )
 
-    # CR-017: Extract and create Acceptance Criteria from content
-    from .markdown_utils import extract_acceptance_criteria
-    acceptance_criteria = extract_acceptance_criteria(content)
-
+    # CR-017: Create Acceptance Criteria records (extracted earlier, before stripping)
     if acceptance_criteria:
         # Get predecessor version for carry-forward logic
         predecessor_version = None
@@ -354,6 +356,7 @@ def create_acceptance_criteria_for_version(
             continue
 
         ordinal = ac_data.get('ordinal', idx + 1)
+        category = ac_data.get('category')  # May be None
         content_hash = compute_ac_content_hash(criteria_text)
 
         # Check for matching predecessor AC
@@ -362,6 +365,7 @@ def create_acceptance_criteria_for_version(
         ac = models.AcceptanceCriteria(
             requirement_version_id=new_version.id,
             ordinal=ordinal,
+            category=category,  # Subsection header this AC belongs to
             criteria_text=criteria_text,
             content_hash=content_hash,
             # Carry forward met status if matching predecessor exists

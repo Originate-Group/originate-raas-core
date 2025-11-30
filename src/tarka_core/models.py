@@ -603,9 +603,22 @@ class Requirement(Base):
 
     @property
     def content(self) -> Optional[str]:
-        """Get content from resolved version."""
+        """Get content from resolved version with AC injection (CR-017).
+
+        DRY principle: ACs are stored ONLY in the acceptance_criteria table,
+        and are injected back into content on read with current met status.
+        This allows AC met status to be updated without creating new versions.
+        """
         v = self.resolve_version()
-        return v.content if v else None
+        if not v or not v.content:
+            return None
+
+        # CR-017: Inject acceptance criteria from table into content
+        if v.acceptance_criteria:
+            from .markdown_utils import inject_acceptance_criteria_into_content
+            return inject_acceptance_criteria_into_content(v.content, v.acceptance_criteria)
+
+        return v.content
 
     @property
     def status(self) -> LifecycleStatus:
@@ -1746,6 +1759,10 @@ class AcceptanceCriteria(Base):
 
     # Ordinal position within the version (1, 2, 3...)
     ordinal = Column(Integer, nullable=False)
+
+    # Category - the subsection header this AC belongs to (e.g., "AC Entity Structure")
+    # Nullable for ACs without subsection headers
+    category = Column(String(255), nullable=True)
 
     # Specification text - immutable (authored content)
     criteria_text = Column(Text, nullable=False)

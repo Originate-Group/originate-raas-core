@@ -1441,6 +1441,7 @@ class AcceptanceCriteriaResponse(BaseModel):
     id: UUID
     requirement_version_id: UUID
     ordinal: int = Field(description="Display order within the version (1, 2, 3...)")
+    category: Optional[str] = Field(None, description="Subsection header this AC belongs to (e.g., 'AC Entity Structure')")
     criteria_text: str = Field(description="The specification text (immutable)")
     content_hash: str = Field(description="SHA-256 of criteria_text for matching")
     met: bool = Field(description="Mutable completion status")
