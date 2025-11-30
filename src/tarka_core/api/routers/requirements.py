@@ -574,7 +574,7 @@ def list_acceptance_criteria(
     for ac in acs:
         met_by_email = None
         if ac.met_by_user_id:
-            user = crud.get_user_by_internal_id(db, ac.met_by_user_id)
+            user = crud.get_user_by_id(db, ac.met_by_user_id)
             met_by_email = user.email if user else None
 
         items.append(schemas.AcceptanceCriteriaResponse(
